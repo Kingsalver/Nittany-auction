@@ -7,7 +7,8 @@
 -- ============================================================
 
 -- Create database if it doesn't exist
-CREATE DATABASE IF NOT EXISTS nittany_auction;
+DROP DATABASE IF EXISTS nittany_auction;
+CREATE DATABASE nittany_auction;
 USE nittany_auction;
 
 -- Drop tables in reverse-dependency order (for clean re-runs)
