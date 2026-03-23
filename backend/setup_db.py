@@ -49,6 +49,18 @@ def main():
         print("Executing schema.sql...")
         execute_schema(cursor, schema_path)
         cursor.execute("USE nittany_auction;")
+
+        # Create Sessions table (extra table for JWT tracking, not part of professor's schema)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS Sessions (
+                session_id INT AUTO_INCREMENT PRIMARY KEY,
+                user_email VARCHAR(255) NOT NULL,
+                token TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL,
+                is_active BOOLEAN DEFAULT TRUE
+            )
+        """)
         
         # Load Addresses into memory
         print("Loading Address data...")

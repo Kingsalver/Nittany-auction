@@ -21,6 +21,19 @@ class UserOut(BaseModel):
     name: str
 
 
+# Auth Models
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    role: str
+    email: str
+
+
 # ZipCode Model
 class ZipCodeOut(BaseModel):
     zip: str
