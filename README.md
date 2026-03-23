@@ -107,6 +107,21 @@ The API will be available at `http://localhost:8000`. Visit `http://localhost:80
 
 ---
 
+## Viewing the Database in VS Code
+
+We recommend using the **Database Client** (by *cweijan*) or **SQLTools** (with the MySQL driver) extension in VS Code.
+1. Install the extension in VS Code.
+2. Add a new connection with the following details:
+   - **Connection Type**: MySQL
+   - **Host**: `localhost`
+   - **Port**: `3306`
+   - **User**: `root`
+   - **Password**: *(your MySQL root password, or blank)*
+   - **Database**: `nittany_auction`
+3. Connect and explore the tables in a GUI.
+
+---
+
 ## Useful Commands
 
 | Task          | Command                                 |
