@@ -1,3 +1,9 @@
+"""
+setup_db.py — Populates the NittanyAuction database from the CSV dataset.
+Run this after creating the schema:  mysql -u root -p < schema.sql
+Usage:  python setup_db.py
+"""
+
 import os
 import csv
 import hashlib
@@ -7,283 +13,247 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def hash_password(password: str) -> str:
+
+def hash_password(password):
+    """Hash a password with SHA-256."""
     return hashlib.sha256(password.encode()).hexdigest()
 
-def parse_date(date_str, fmt="%m/%d/%y"):
-    if not date_str: return None
+
+def parse_date(date_str):
+    """Convert a date like '03/15/26' to '2026-03-15 00:00:00'."""
+    if not date_str:
+        return None
     try:
-        return datetime.strptime(date_str.strip(), fmt).strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.strptime(date_str.strip(), "%m/%d/%y").strftime("%Y-%m-%d %H:%M:%S")
     except ValueError:
         return None
 
-def execute_schema(cursor, schema_path):
-    with open(schema_path, 'r', encoding='utf-8') as f:
-        sql = f.read()
-    statements = sql.split(';')
-    for statement in statements:
-        if statement.strip():
-            cursor.execute(statement)
-
-def insert_ignore(cursor, table, data_dict):
-    keys = data_dict.keys()
-    columns = ', '.join(keys)
-    placeholders = ', '.join(['%s'] * len(keys))
-    query = f"INSERT IGNORE INTO {table} ({columns}) VALUES ({placeholders})"
-    cursor.execute(query, tuple(data_dict.values()))
 
 def main():
-    connection = pymysql.connect(
+    # Connect to MySQL
+    conn = pymysql.connect(
         host=os.getenv("DB_HOST", "localhost"),
         port=int(os.getenv("DB_PORT", 3306)),
         user=os.getenv("DB_USER", "root"),
         password=os.getenv("DB_PASSWORD", ""),
+        database=os.getenv("DB_NAME", "nittany_auction"),
         autocommit=True
     )
-    
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    schema_path = os.path.join(base_dir, "schema.sql")
-    data_dir = os.path.join(base_dir, "resources", "NittanyAuctionDataset_v1")
-    
-    with connection.cursor() as cursor:
-        print("Executing schema.sql...")
-        execute_schema(cursor, schema_path)
-        cursor.execute("USE nittany_auction;")
+    cursor = conn.cursor()
 
-        # Create Sessions table (extra table for JWT tracking)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS Sessions (
-                session_id INT AUTO_INCREMENT PRIMARY KEY,
-                user_email VARCHAR(255) NOT NULL,
-                token TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                expires_at TIMESTAMP NOT NULL,
-                is_active BOOLEAN DEFAULT TRUE
+    # Path to CSV files
+    data_dir = os.path.join(os.path.dirname(__file__), "resources", "NittanyAuctionDataset_v1")
+
+    # ---- Load addresses into a dictionary so we can look them up later ----
+    print("Loading addresses...")
+    addresses = {}
+    with open(os.path.join(data_dir, "Address.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            addr_id = row["address_id"]
+            street = (row.get("street_num", "") + " " + row.get("street_name", "")).strip()
+            addresses[addr_id] = {"zip": row.get("zipcode"), "street": street}
+
+    # ---- Load names from Bidders CSV so we can put a name on each User ----
+    print("Loading bidder names...")
+    names = {}
+    with open(os.path.join(data_dir, "Bidders.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            email = row["email"].strip()
+            names[email] = (row.get("first_name", "") + " " + row.get("last_name", "")).strip()
+
+    # ---- 1. ZipCode ----
+    print("Inserting ZipCode...")
+    with open(os.path.join(data_dir, "Zipcode_Info.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            cursor.execute(
+                "INSERT IGNORE INTO ZipCode (zip, city, state) VALUES (%s, %s, %s)",
+                (row["zipcode"], row["city"], row["state"])
             )
-        """)
-        
-        # Load Addresses into memory
-        print("Loading Address data...")
-        addresses = {}
-        with open(os.path.join(data_dir, "Address.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                addresses[row['address_id']] = {
-                    'zip': row.get('zipcode'),
-                    'street': f"{row.get('street_num', '').strip()} {row.get('street_name', '').strip()}"
-                }
-                
-        # 1. ZipCode
-        print("Populating ZipCode...")
-        with open(os.path.join(data_dir, "Zipcode_Info.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                insert_ignore(cursor, 'ZipCode', {
-                    'zip': row['zipcode'],
-                    'city': row['city'],
-                    'state': row['state']
-                })
 
-        # Pre-load Names from Bidders to improve User population
-        user_names = {}
-        with open(os.path.join(data_dir, "Bidders.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                user_names[row['email'].strip()] = f"{row.get('first_name', '')} {row.get('last_name', '')}".strip()
-                
-        # 2. User
-        print("Populating User...")
-        with open(os.path.join(data_dir, "Users.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                email = row['email'].strip()
-                insert_ignore(cursor, 'User', {
-                    'email': email,
-                    'password': hash_password(row['password'].strip()),
-                    'name': user_names.get(email, email.split('@')[0])
-                })
+    # ---- 2. User (passwords are hashed with SHA-256) ----
+    print("Inserting User...")
+    with open(os.path.join(data_dir, "Users.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            email = row["email"].strip()
+            hashed = hash_password(row["password"].strip())
+            name = names.get(email, email.split("@")[0])  # use bidder name if available
+            cursor.execute(
+                "INSERT IGNORE INTO User (email, password, name) VALUES (%s, %s, %s)",
+                (email, hashed, name)
+            )
 
-        # Helper method for missing users
-        def ensure_user(email, name_hint=""):
-            cursor.execute("SELECT email FROM User WHERE email=%s", (email,))
-            if not cursor.fetchone():
-                insert_ignore(cursor, 'User', {
-                    'email': email,
-                    'password': hash_password("default123"),
-                    'name': name_hint or email.split('@')[0]
-                })
+    # Helper: make sure a user exists before inserting into a child table
+    def ensure_user(email, name=""):
+        cursor.execute("SELECT email FROM User WHERE email = %s", (email,))
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT IGNORE INTO User (email, password, name) VALUES (%s, %s, %s)",
+                (email, hash_password("default123"), name or email.split("@")[0])
+            )
 
-        # 3. Bidder
-        print("Populating Bidder...")
-        with open(os.path.join(data_dir, "Bidders.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                email = row['email'].strip()
-                home_address_id = row.get('home_address_id', '').strip()
-                ensure_user(email, f"{row.get('first_name', '')} {row.get('last_name', '')}".strip())
-                insert_ignore(cursor, 'Bidder', {
-                    'email': email,
-                    'street': addresses.get(home_address_id, {}).get('street'),
-                    'zip': addresses.get(home_address_id, {}).get('zip'),
-                    'phone': None,
-                    'major': row.get('major') or None,
-                    'age': row.get('age') or None,
-                    'annual_income': None
-                })
+    # ---- 3. Bidder ----
+    print("Inserting Bidder...")
+    with open(os.path.join(data_dir, "Bidders.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            email = row["email"].strip()
+            addr = addresses.get(row.get("home_address_id", "").strip(), {})
+            ensure_user(email, (row.get("first_name", "") + " " + row.get("last_name", "")).strip())
+            cursor.execute(
+                "INSERT IGNORE INTO Bidder (email, street, zip, major, age) VALUES (%s, %s, %s, %s, %s)",
+                (email, addr.get("street"), addr.get("zip"), row.get("major") or None, row.get("age") or None)
+            )
 
-        # 4. Seller
-        print("Populating Seller...")
-        with open(os.path.join(data_dir, "Sellers.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                email = row['email'].strip()
-                ensure_user(email)
-                insert_ignore(cursor, 'Seller', {
-                    'email': email,
-                    'bank_routing_no': row.get('bank_routing_number'),
-                    'bank_account_no': row.get('bank_account_number'),
-                    'account_balance': row.get('balance', 0)
-                })
+    # ---- 4. Seller ----
+    print("Inserting Seller...")
+    with open(os.path.join(data_dir, "Sellers.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            email = row["email"].strip()
+            ensure_user(email)
+            cursor.execute(
+                "INSERT IGNORE INTO Seller (email, bank_routing_no, bank_account_no, account_balance) VALUES (%s, %s, %s, %s)",
+                (email, row.get("bank_routing_number"), row.get("bank_account_number"), row.get("balance", 0))
+            )
 
-        # 5. LocalVendor
-        print("Populating LocalVendor...")
-        with open(os.path.join(data_dir, "Local_Vendors.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                email = row['Email'].strip()
-                ensure_user(email, row.get('Business_Name'))
-                insert_ignore(cursor, 'Seller', {'email': email})
-                biz_address_id = row.get('Business_Address_ID', '').strip()
-                insert_ignore(cursor, 'LocalVendor', {
-                    'email': email,
-                    'business_name': row.get('Business_Name'),
-                    'business_address': addresses.get(biz_address_id, {}).get('street'),
-                    'customer_service_phone': row.get('Customer_Service_Phone_Number')
-                })
+    # ---- 5. LocalVendor ----
+    print("Inserting LocalVendor...")
+    with open(os.path.join(data_dir, "Local_Vendors.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            email = row["Email"].strip()
+            ensure_user(email, row.get("Business_Name"))
+            cursor.execute("INSERT IGNORE INTO Seller (email) VALUES (%s)", (email,))
+            addr = addresses.get(row.get("Business_Address_ID", "").strip(), {})
+            cursor.execute(
+                "INSERT IGNORE INTO LocalVendor (email, business_name, business_address, customer_service_phone) VALUES (%s, %s, %s, %s)",
+                (email, row.get("Business_Name"), addr.get("street"), row.get("Customer_Service_Phone_Number"))
+            )
 
-        # 6. HelpDesk
-        print("Populating HelpDesk...")
-        with open(os.path.join(data_dir, "Helpdesk.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                email = row['email'].strip()
-                ensure_user(email)
-                insert_ignore(cursor, 'HelpDesk', {
-                    'email': email,
-                    'staff_role': row.get('Position', 'Support')
-                })
+    # ---- 6. HelpDesk ----
+    print("Inserting HelpDesk...")
+    with open(os.path.join(data_dir, "Helpdesk.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            email = row["email"].strip()
+            ensure_user(email)
+            cursor.execute(
+                "INSERT IGNORE INTO HelpDesk (email, staff_role) VALUES (%s, %s)",
+                (email, row.get("Position", "Support"))
+            )
 
-        # 7. CreditCard
-        print("Populating CreditCard...")
-        with open(os.path.join(data_dir, "Credit_Cards.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                month = row.get('expire_month', '1').zfill(2)
-                year = row.get('expire_year', '2025')
-                insert_ignore(cursor, 'CreditCard', {
-                    'card_number': row['credit_card_num'].strip(),
-                    'email': row['Owner_email'].strip(),
-                    'card_type': row.get('card_type'),
-                    'expiration_date': f"{year}-{month}-01"
-                })
+    # ---- 7. CreditCard ----
+    print("Inserting CreditCard...")
+    with open(os.path.join(data_dir, "Credit_Cards.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            month = row.get("expire_month", "1").zfill(2)
+            year = row.get("expire_year", "2025")
+            cursor.execute(
+                "INSERT IGNORE INTO CreditCard (card_number, email, card_type, expiration_date) VALUES (%s, %s, %s, %s)",
+                (row["credit_card_num"].strip(), row["Owner_email"].strip(), row.get("card_type"), f"{year}-{month}-01")
+            )
 
-        # 8. Category
-        print("Populating Category...")
-        categories = {}
-        with open(os.path.join(data_dir, "Categories.csv"), 'r', encoding='utf-8-sig') as f:
-            cat_list = list(csv.DictReader(f))
-            unique_cats = set()
-            for row in cat_list:
-                if row.get('category_name'): unique_cats.add(row['category_name'].strip())
-                if row.get('parent_category'): unique_cats.add(row['parent_category'].strip())
-            
-            for c in unique_cats:
-                insert_ignore(cursor, 'Category', {'category_name': c})
-                
-            cursor.execute("SELECT category_id, category_name FROM Category")
-            for cid, cname in cursor.fetchall():
-                categories[cname] = cid
+    # ---- 8. Category ----
+    print("Inserting Category...")
+    with open(os.path.join(data_dir, "Categories.csv"), encoding="utf-8-sig") as f:
+        cat_rows = list(csv.DictReader(f))
 
-            for row in cat_list:
-                cname = row.get('category_name', '').strip()
-                pname = row.get('parent_category', '').strip()
-                if pname and cname:
-                    cursor.execute("UPDATE Category SET parent_category_id = %s WHERE category_id = %s", (categories[pname], categories[cname]))
+    # First pass: insert all unique category names
+    all_names = set()
+    for row in cat_rows:
+        if row.get("category_name"):
+            all_names.add(row["category_name"].strip())
+        if row.get("parent_category"):
+            all_names.add(row["parent_category"].strip())
+    for name in all_names:
+        cursor.execute("INSERT IGNORE INTO Category (category_name) VALUES (%s)", (name,))
 
-        # 9. Product
-        print("Populating Product...")
-        with open(os.path.join(data_dir, "Auction_Listings.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                seller_email = row['Seller_Email'].strip()
-                ensure_user(seller_email)
-                insert_ignore(cursor, 'Seller', {'email': seller_email})
-                
-                cat_name = row['Category'].strip()
-                cat_id = categories.get(cat_name)
-                
-                price = row.get('Reserve_Price', '0').replace('$', '').replace(',', '').strip()
-                
-                insert_ignore(cursor, 'Product', {
-                    'product_id': row['Listing_ID'],
-                    'seller_email': seller_email,
-                    'category_id': cat_id,
-                    'title': row.get('Auction_Title', row.get('Product_Name')),
-                    'description': row.get('Product_Description'),
-                    'reserve_price': price if price else 0,
-                    'auction_end_time': '2026-12-31 23:59:59',
-                    'listing_status': 'active' if row.get('Status') == '1' else 'inactive'
-                })
+    # Build a name -> id lookup
+    cursor.execute("SELECT category_id, category_name FROM Category")
+    cat_ids = {}
+    for row in cursor.fetchall():
+        cat_ids[row[1]] = row[0]
 
-        # 10. Bid
-        print("Populating Bid...")
-        with open(os.path.join(data_dir, "Bids.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                ensure_user(row['Bidder_Email'].strip())
-                insert_ignore(cursor, 'Bidder', {'email': row['Bidder_Email'].strip()})
-                insert_ignore(cursor, 'Bid', {
-                    'bid_id': row['Bid_ID'],
-                    'product_id': row['Listing_ID'],
-                    'bidder_email': row['Bidder_Email'],
-                    'bid_amount': row['Bid_Price']
-                })
+    # Second pass: set parent_category_id
+    for row in cat_rows:
+        cname = row.get("category_name", "").strip()
+        pname = row.get("parent_category", "").strip()
+        if cname and pname:
+            cursor.execute(
+                "UPDATE Category SET parent_category_id = %s WHERE category_id = %s",
+                (cat_ids[pname], cat_ids[cname])
+            )
 
-        # 11. Transaction
-        print("Populating Transaction...")
-        with open(os.path.join(data_dir, "Transactions.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                cursor.execute("SELECT bid_id FROM Bid WHERE product_id=%s AND bidder_email=%s ORDER BY bid_amount DESC LIMIT 1", (row['Listing_ID'], row['Bidder_Email']))
-                b = cursor.fetchone()
-                if b:
-                    pay_date = parse_date(row.get('Date')) or '2026-01-01 00:00:00'
-                    insert_ignore(cursor, 'Transaction', {
-                        'transaction_id': row['Transaction_ID'],
-                        'bid_id': b[0],
-                        'product_id': row['Listing_ID'],
-                        'bidder_email': row['Bidder_Email'],
-                        'seller_email': row['Seller_Email'],
-                        'final_amount': row['Payment'],
-                        'payment_status': 'completed',
-                        'payment_date': pay_date
-                    })
+    # ---- 9. Product (from Auction_Listings) ----
+    print("Inserting Product...")
+    with open(os.path.join(data_dir, "Auction_Listings.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            seller = row["Seller_Email"].strip()
+            ensure_user(seller)
+            cursor.execute("INSERT IGNORE INTO Seller (email) VALUES (%s)", (seller,))
+            cat_id = cat_ids.get(row["Category"].strip())
+            price = row.get("Reserve_Price", "0").replace("$", "").replace(",", "").strip() or "0"
+            status = "active" if row.get("Status") == "1" else "inactive"
+            cursor.execute(
+                "INSERT IGNORE INTO Product (product_id, seller_email, category_id, title, description, reserve_price, auction_end_time, listing_status) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (row["Listing_ID"], seller, cat_id, row.get("Auction_Title", row.get("Product_Name")), row.get("Product_Description"), price, "2026-12-31 23:59:59", status)
+            )
 
-        # 12. Rating
-        print("Populating Rating...")
-        with open(os.path.join(data_dir, "Ratings.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                cursor.execute("SELECT transaction_id FROM Transaction WHERE bidder_email=%s AND seller_email=%s LIMIT 1", (row['Bidder_Email'], row['Seller_Email']))
-                t = cursor.fetchone()
-                if t:
-                    insert_ignore(cursor, 'Rating', {
-                        'transaction_id': t[0],
-                        'score': row['Rating'],
-                        'comment': row.get('Rating_Desc')
-                    })
+    # ---- 10. Bid ----
+    print("Inserting Bid...")
+    with open(os.path.join(data_dir, "Bids.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            bidder = row["Bidder_Email"].strip()
+            ensure_user(bidder)
+            cursor.execute("INSERT IGNORE INTO Bidder (email) VALUES (%s)", (bidder,))
+            cursor.execute(
+                "INSERT IGNORE INTO Bid (bid_id, product_id, bidder_email, bid_amount) VALUES (%s, %s, %s, %s)",
+                (row["Bid_ID"], row["Listing_ID"], bidder, row["Bid_Price"])
+            )
 
-        # 13. Request
-        print("Populating Request...")
-        with open(os.path.join(data_dir, "Requests.csv"), 'r', encoding='utf-8-sig') as f:
-            for row in csv.DictReader(f):
-                ensure_user(row['sender_email'].strip())
-                insert_ignore(cursor, 'Request', {
-                    'request_id': row['request_id'],
-                    'submitted_by_email': row['sender_email'],
-                    'request_type': row['request_type'],
-                    'status': 'resolved' if row.get('request_status') == '1' else 'pending'
-                })
+    # ---- 11. Transaction ----
+    print("Inserting Transaction...")
+    with open(os.path.join(data_dir, "Transactions.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            # Find the matching bid
+            cursor.execute(
+                "SELECT bid_id FROM Bid WHERE product_id = %s AND bidder_email = %s ORDER BY bid_amount DESC LIMIT 1",
+                (row["Listing_ID"], row["Bidder_Email"])
+            )
+            bid = cursor.fetchone()
+            if bid:
+                pay_date = parse_date(row.get("Date")) or "2026-01-01 00:00:00"
+                cursor.execute(
+                    "INSERT IGNORE INTO Transaction (transaction_id, bid_id, product_id, bidder_email, seller_email, final_amount, payment_status, payment_date) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (row["Transaction_ID"], bid[0], row["Listing_ID"], row["Bidder_Email"], row["Seller_Email"], row["Payment"], "completed", pay_date)
+                )
 
-    connection.close()
-    print("Database setup complete.")
+    # ---- 12. Rating ----
+    print("Inserting Rating...")
+    with open(os.path.join(data_dir, "Ratings.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            cursor.execute(
+                "SELECT transaction_id FROM Transaction WHERE bidder_email = %s AND seller_email = %s LIMIT 1",
+                (row["Bidder_Email"], row["Seller_Email"])
+            )
+            txn = cursor.fetchone()
+            if txn:
+                cursor.execute(
+                    "INSERT IGNORE INTO Rating (transaction_id, score, comment) VALUES (%s, %s, %s)",
+                    (txn[0], row["Rating"], row.get("Rating_Desc"))
+                )
+
+    # ---- 13. Request ----
+    print("Inserting Request...")
+    with open(os.path.join(data_dir, "Requests.csv"), encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            ensure_user(row["sender_email"].strip())
+            status = "resolved" if row.get("request_status") == "1" else "pending"
+            cursor.execute(
+                "INSERT IGNORE INTO Request (request_id, submitted_by_email, request_type, status) VALUES (%s, %s, %s, %s)",
+                (row["request_id"], row["sender_email"], row["request_type"], status)
+            )
+
+    cursor.close()
+    conn.close()
+    print("Done! Database is fully populated.")
+
 
 if __name__ == "__main__":
     main()
