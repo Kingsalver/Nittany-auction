@@ -12,6 +12,7 @@ CREATE DATABASE nittany_auction;
 USE nittany_auction;
 
 -- Drop tables in reverse-dependency order (for clean re-runs)
+DROP TABLE IF EXISTS Sessions;
 DROP TABLE IF EXISTS ListingQuestion;
 DROP TABLE IF EXISTS Request;
 DROP TABLE IF EXISTS Notification;
@@ -267,4 +268,19 @@ CREATE TABLE ListingQuestion (
     PRIMARY KEY (question_id),
     FOREIGN KEY (product_id)    REFERENCES Product(product_id)  ON DELETE CASCADE,
     FOREIGN KEY (bidder_email)  REFERENCES Bidder(email)
+);
+
+
+-- ============================================================
+-- 17. Sessions (JWT session tracking)
+-- ============================================================
+CREATE TABLE Sessions (
+    session_id  INT             NOT NULL AUTO_INCREMENT,
+    user_email  VARCHAR(255)    NOT NULL,
+    token       TEXT            NOT NULL,
+    created_at  TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    expires_at  TIMESTAMP       NOT NULL,
+    is_active   BOOLEAN         DEFAULT TRUE,
+    PRIMARY KEY (session_id),
+    FOREIGN KEY (user_email) REFERENCES User(email)
 );

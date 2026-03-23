@@ -50,7 +50,7 @@ def main():
         execute_schema(cursor, schema_path)
         cursor.execute("USE nittany_auction;")
 
-        # Create Sessions table (extra table for JWT tracking, not part of professor's schema)
+        # Create Sessions table (extra table for JWT tracking)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS Sessions (
                 session_id INT AUTO_INCREMENT PRIMARY KEY,
