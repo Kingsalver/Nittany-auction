@@ -26,6 +26,17 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
+# Model for signup page, this is what the frontend sends to the backend and keeps the structure of the data uniform
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    first_name: str
+    last_name: str
+    age: Optional[int] = None
+    major: Optional[str] = None
+    street: Optional[str] = None
+    zip: Optional[str] = None
+
 
 class Token(BaseModel):
     access_token: str

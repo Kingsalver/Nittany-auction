@@ -3,7 +3,7 @@ import pymysql
 
 from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_db
-from app.schemas import LoginRequest, Token
+from app.schemas import LoginRequest, RegisterRequest, Token
 from app.auth import (
     TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -55,19 +55,26 @@ def login(req: LoginRequest, db=Depends(get_db)):
 
 
 @router.post("/register")
-def register(req: LoginRequest, db=Depends(get_db)):
-    """Register a new user. Hashes the password and stores it."""
+def register(req: RegisterRequest, db=Depends(get_db)):
+    """Register a new user as a Buyer. Inserts into User and Bidder tables."""
     with db.cursor() as cursor:
         # Check if email is already taken
         cursor.execute("SELECT email FROM User WHERE email = %s", (req.email,))
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        # Insert the new user with hashed password
+        # Insert into User table with hashed password
         hashed = hash_password(req.password)
+        name = f"{req.first_name} {req.last_name}"
         cursor.execute(
-            "INSERT INTO User (email, password) VALUES (%s, %s)",
-            (req.email, hashed),
+            "INSERT INTO User (email, password, name) VALUES (%s, %s, %s)",
+            (req.email, hashed, name),
+        )
+
+        # Insert into Bidder table (all new sign-ups are Buyers)
+        cursor.execute(
+            "INSERT INTO Bidder (email, street, zip, major, age) VALUES (%s, %s, %s, %s, %s)",
+            (req.email, req.street, req.zip, req.major, req.age),
         )
     db.commit()
 

@@ -2,10 +2,6 @@
 
 CMPSC431W Spring 2026 - NittanyAuction Project
 
-## Project Report
-
-[Phase 1 Report (SharePoint)](https://pennstateoffice365-my.sharepoint.com/:w:/r/personal/axb6513_psu_edu/Documents/Nittany%20Auction%20Phase%201%20Report1.docx?d=w1069a8dc526e4da09c66283cbe70cfce&csf=1&web=1&e=adKBhU)
-
 ## Tech Stack
 
 | Layer    | Technology                |
@@ -14,111 +10,69 @@ CMPSC431W Spring 2026 - NittanyAuction Project
 | Backend  | FastAPI (Python), raw SQL |
 | Database | MySQL                     |
 
-## Project Structure
-
-```
-Nittany-auction/
-├── backend/
-│   ├── .env.example        # DB credentials template
-│   ├── requirements.txt    # Python dependencies
-│   ├── schema.sql          # MySQL schema (16 tables)
-│   └── app/
-│       ├── __init__.py
-│       ├── database.py     # pymysql connection helper
-│       ├── main.py         # FastAPI entrypoint
-│       └── schemas.py      # Pydantic request/response models
-└── frontend/               # (coming soon)
-```
-
 ---
 
-## First-Time Setup (WSL / Ubuntu)
+## Quick Start
 
-### 1. Install MySQL
+### 1. Install & Start MySQL (Ubuntu/WSL)
 
+If you haven't installed MySQL yet:
 ```bash
 sudo apt update
 sudo apt install mysql-server
 sudo service mysql start
 ```
 
-### 2. Set the MySQL Root Password
+### 2. Set Up the Database Credentials
 
-```bash
-sudo mysql
-```
-
-Then inside the MySQL prompt:
-
-```sql
-ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'your_password';
-FLUSH PRIVILEGES;
-EXIT;
-```
-
-### 3. Create the Database & Tables
+The backend needs your MySQL root password to connect. We store this securely in an `.env` file instead of in code.
 
 ```bash
 cd ~/CMPSC431W/Nittany-auction/backend
-mysql -u root -p < schema.sql
-```
-
-This creates the `nittany_auction` database and all 16 tables.
-
-### 4. Set Up the Python Backend
-
-```bash
-cd ~/CMPSC431W/Nittany-auction/backend
-
-# Create & activate a virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 5. Configure Environment Variables
-
-```bash
 cp .env.example .env
 nano .env
 ```
+Inside the `.env` file, change `DB_PASSWORD=your_password_here` to your actual MySQL root password (if you don't have one, leave it blank: `DB_PASSWORD=`).
 
-Fill in your MySQL credentials:
+### 3. Provision the Database Schema & Data
 
+Provision the schema and seed data:
+
+```bash
+source app/venv/bin/activate
+pip install -r requirements.txt
+mysql -u root -p < schema.sql
+python setup_db.py
 ```
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password
-DB_NAME=nittany_auction
-```
 
-### 6. Run the API Server
+### 3. Start the Backend
 
 ```bash
 cd ~/CMPSC431W/Nittany-auction/backend
-source venv/bin/activate
+source app/venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
-The API will be available at `http://localhost:8000`. Visit `http://localhost:8000/health` to verify the DB connection.
+API runs at `http://localhost:8000`. Swagger docs at `http://localhost:8000/docs`.
+
+### 4. Start the Frontend
+
+```bash
+cd ~/CMPSC431W/NittanyAuctionFrontend
+npm install
+npm run dev
+```
+
+Frontend runs at `http://localhost:5173`.
 
 ---
 
-## Viewing the Database in VS Code
+## Test Login
 
-We recommend using the **Database Client** (by *cweijan*) or **SQLTools** (with the MySQL driver) extension in VS Code.
-1. Install the extension in VS Code.
-2. Add a new connection with the following details:
-   - **Connection Type**: MySQL
-   - **Host**: `localhost`
-   - **Port**: `3306`
-   - **User**: `root`
-   - **Password**: *(your MySQL root password, or blank)*
-   - **Database**: `nittany_auction`
-3. Connect and explore the tables in a GUI.
+Use any user from `Users.csv`. Example:
+
+- **Email:** `arubertelli0@lsu.edu`
+- **Password:** `TbIF16hoUqGl`
 
 ---
 
@@ -130,5 +84,7 @@ We recommend using the **Database Client** (by *cweijan*) or **SQLTools** (with 
 | Stop MySQL    | `sudo service mysql stop`               |
 | MySQL CLI     | `mysql -u root -p nittany_auction`      |
 | Reset schema  | `mysql -u root -p < backend/schema.sql` |
+| Re-seed data  | `python backend/setup_db.py`            |
 | Start API     | `uvicorn app.main:app --reload`         |
-| Activate venv | `source backend/venv/bin/activate`      |
+| Start frontend| `npm run dev`                           |
+| Show 10 Users | `mysql -u root -p nittany_auction -e "SELECT * FROM User LIMIT 10;"` |
