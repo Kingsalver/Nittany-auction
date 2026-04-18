@@ -112,7 +112,7 @@ class CreditCardOut(CreditCardCreate):
 # Category Model
 class CategoryCreate(BaseModel):
     category_name: str
-    parent_category_id: Optional[int] = None
+    parent_category: Optional[str] = None  # name string, not an ID
     is_leaf: bool = False
     status: str = "active"
 
@@ -122,24 +122,29 @@ class CategoryOut(CategoryCreate):
 
 
 # Product Model
+# auction_end_time removed — auctions end by max_bids count, not timestamp
 class ProductCreate(BaseModel):
-    seller_email: EmailStr
-    category_id: int
-    title: str
-    description: Optional[str] = None
+    category_name: str
+    auction_title: str
+    product_name: Optional[str] = None
+    product_description: Optional[str] = None
+    quantity: int = 1
     reserve_price: float
-    auction_end_time: datetime
+    max_bids: int
     photo_path: Optional[str] = None
 
 
 class ProductOut(BaseModel):
     product_id: int
-    seller_email: EmailStr
-    category_id: int
-    title: str
-    description: Optional[str] = None
+    seller_email: str
+    listing_id: int
+    category_name: str
+    auction_title: str
+    product_name: Optional[str] = None
+    product_description: Optional[str] = None
+    quantity: int
     reserve_price: float
-    auction_end_time: datetime
+    max_bids: int
     listing_status: str
     created_at: datetime
     photo_path: Optional[str] = None
@@ -148,37 +153,38 @@ class ProductOut(BaseModel):
 # Bid Model
 class BidCreate(BaseModel):
     product_id: int
-    bidder_email: EmailStr
-    bid_amount: float
+    bid_price: float
 
 
-class BidOut(BidCreate):
+class BidOut(BaseModel):
     bid_id: int
+    product_id: int
+    bidder_email: str
+    bid_price: float
     bid_timestamp: datetime
 
 
 # Transaction Model
 class TransactionOut(BaseModel):
     transaction_id: int
-    bid_id: int
     product_id: int
-    bidder_email: EmailStr
-    seller_email: EmailStr
-    final_amount: float
+    seller_email: str
+    buyer_email: str
+    payment: float
+    payment_date: Optional[date] = None
     payment_status: str
-    payment_date: Optional[datetime] = None
-    transaction_method: Optional[str] = None
 
 
 # Rating Model
 class RatingCreate(BaseModel):
-    transaction_id: int
-    score: int = Field(ge=1, le=5)
-    comment: Optional[str] = None
+    seller_email: str
+    rating_date: date
+    rating: int = Field(ge=1, le=5)
+    rating_desc: Optional[str] = None
 
 
 class RatingOut(RatingCreate):
-    rating_id: int
+    bidder_email: str
 
 
 # Watchlist Model
