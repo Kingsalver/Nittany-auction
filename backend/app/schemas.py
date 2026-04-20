@@ -52,6 +52,14 @@ class RequestCreate(BaseModel):
     request_desc: Optional[str] = None
 
 
+# Profile update — phone and address fields only
+class ProfileUpdate(BaseModel):
+    phone: Optional[str] = None
+    street_num: Optional[str] = None
+    street_name: Optional[str] = None
+    zipcode: Optional[str] = None
+
+
 # ZipCode Model
 class ZipCodeOut(BaseModel):
     zip: str

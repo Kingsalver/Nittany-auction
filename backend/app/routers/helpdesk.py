@@ -1,5 +1,8 @@
 """
-routers/requests.py — HelpDesk request management endpoints.
+routers/helpdesk.py — HelpDesk request management endpoints.
+
+Renamed from requests.py to avoid shadowing Python's built-in `requests` library,
+which caused 422 Unprocessable Entity errors on POST /api/requests.
 
 Request flow:
   - Any logged-in user can submit a request (POST /api/requests)

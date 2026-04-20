@@ -44,7 +44,7 @@ def get_user_role(email, cursor):
     """Figure out the user's role by checking the professor's tables."""
     cursor.execute("SELECT email FROM HelpDesk WHERE email = %s", (email,))
     if cursor.fetchone():
-        return "Helpdesk"
+        return "HelpDesk"
 
     cursor.execute("SELECT email FROM Seller WHERE email = %s", (email,))
     if cursor.fetchone():

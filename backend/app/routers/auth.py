@@ -3,7 +3,7 @@ import pymysql
 
 from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_db
-from app.schemas import LoginRequest, RegisterRequest, Token
+from app.schemas import LoginRequest, RegisterRequest, Token, ProfileUpdate
 from app.auth import (
     TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -121,6 +121,97 @@ def register(req: RegisterRequest, db=Depends(get_db)):
 def get_me(current_user=Depends(get_current_user)):
     """Get the currently logged-in user's info. Requires a valid token."""
     return current_user
+
+
+@router.get("/profile")
+def get_profile(current_user=Depends(get_current_user), db=Depends(get_db)):
+    """Get the full profile of the logged-in user — User + Bidder + Address joined."""
+    email = current_user["email"]
+
+    with db.cursor() as cursor:
+        # Get base user info
+        cursor.execute("SELECT email, name FROM User WHERE email = %s", (email,))
+        user = cursor.fetchone()
+
+        # Get bidder info if they are a bidder
+        cursor.execute(
+            """
+            SELECT b.first_name, b.last_name, b.age, b.major, b.phone, b.annual_income,
+                   a.street_num, a.street_name, a.zipcode,
+                   z.city, z.state
+            FROM Bidder b
+            LEFT JOIN Address a ON b.home_address_id = a.address_id
+            LEFT JOIN ZipCode z ON a.zipcode = z.zipcode
+            WHERE b.email = %s
+            """,
+            (email,)
+        )
+        bidder = cursor.fetchone()
+
+    return {
+        "email": user["email"],
+        "name": user["name"],
+        "role": current_user["role"],
+        "first_name": bidder["first_name"] if bidder else None,
+        "last_name": bidder["last_name"] if bidder else None,
+        "age": bidder["age"] if bidder else None,
+        "major": bidder["major"] if bidder else None,
+        "phone": bidder["phone"] if bidder else None,
+        "street_num": bidder["street_num"] if bidder else None,
+        "street_name": bidder["street_name"] if bidder else None,
+        "zipcode": bidder["zipcode"] if bidder else None,
+        "city": bidder["city"] if bidder else None,
+        "state": bidder["state"] if bidder else None,
+    }
+
+
+@router.patch("/profile")
+def update_profile(req: ProfileUpdate, current_user=Depends(get_current_user), db=Depends(get_db)):
+    """Update the logged-in bidder's phone number and/or home address."""
+    import uuid
+    email = current_user["email"]
+
+    with db.cursor() as cursor:
+        # Update phone directly on Bidder
+        if req.phone is not None:
+            cursor.execute(
+                "UPDATE Bidder SET phone = %s WHERE email = %s",
+                (req.phone, email)
+            )
+
+        # Handle address update
+        if req.zipcode is not None:
+            # Check zip exists
+            cursor.execute("SELECT zipcode FROM ZipCode WHERE zipcode = %s", (req.zipcode,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=400, detail=f"ZIP code '{req.zipcode}' not found")
+
+            # Check if bidder already has an address
+            cursor.execute(
+                "SELECT home_address_id FROM Bidder WHERE email = %s", (email,)
+            )
+            row = cursor.fetchone()
+            existing_id = row["home_address_id"] if row else None
+
+            if existing_id:
+                # Update the existing Address row
+                cursor.execute(
+                    "UPDATE Address SET zipcode=%s, street_num=%s, street_name=%s WHERE address_id=%s",
+                    (req.zipcode, req.street_num, req.street_name, existing_id)
+                )
+            else:
+                # Create a new Address row and link it
+                new_id = str(uuid.uuid4())
+                cursor.execute(
+                    "INSERT INTO Address (address_id, zipcode, street_num, street_name) VALUES (%s,%s,%s,%s)",
+                    (new_id, req.zipcode, req.street_num, req.street_name)
+                )
+                cursor.execute(
+                    "UPDATE Bidder SET home_address_id = %s WHERE email = %s",
+                    (new_id, email)
+                )
+    db.commit()
+    return {"detail": "Profile updated successfully"}
 
 
 @router.post("/logout")
