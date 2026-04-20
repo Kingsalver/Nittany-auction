@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.database import get_db
 from app.schemas import ProductCreate, ProductOut, CategoryOut
 from app.auth import get_current_user
+from app.database import get_db
 
 router = APIRouter(prefix="/api", tags=["Products"])
 
