@@ -71,7 +71,13 @@ def get_products(db=Depends(get_db)):
     """All active product listings, newest first."""
     with db.cursor() as cursor:
         cursor.execute(
-            "SELECT * FROM Product WHERE listing_status = 'active' ORDER BY created_at DESC"
+            """
+            SELECT p.*, u.name AS seller_name 
+            FROM Product p
+            JOIN User u ON p.seller_email = u.email
+            WHERE p.listing_status = 'active'
+            ORDER BY p.created_at DESC
+            """
         )
         return cursor.fetchall()
 

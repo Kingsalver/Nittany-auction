@@ -152,6 +152,7 @@ class ProductCreate(BaseModel):
 class ProductOut(BaseModel):
     product_id: int
     seller_email: str
+    seller_name: Optional[str] = None
     listing_id: int
     category_name: str
     auction_title: str
