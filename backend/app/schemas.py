@@ -34,8 +34,9 @@ class RegisterRequest(BaseModel):
     last_name: str
     age: Optional[int] = None
     major: Optional[str] = None
-    street: Optional[str] = None
-    zip: Optional[str] = None
+    street_num: Optional[str] = None   # e.g. "123"
+    street_name: Optional[str] = None  # e.g. "Main St"
+    zipcode: Optional[str] = None      # must exist in ZipCode table
 
 
 class Token(BaseModel):

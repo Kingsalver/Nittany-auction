@@ -56,7 +56,9 @@ def login(req: LoginRequest, db=Depends(get_db)):
 
 @router.post("/register")
 def register(req: RegisterRequest, db=Depends(get_db)):
-    """Register a new user as a Buyer. Inserts into User and Bidder tables."""
+    """Register a new user as a Buyer. Inserts into User, Address (if address given), and Bidder."""
+    import uuid
+
     with db.cursor() as cursor:
         # Check if email is already taken
         cursor.execute("SELECT email FROM User WHERE email = %s", (req.email,))
@@ -71,10 +73,24 @@ def register(req: RegisterRequest, db=Depends(get_db)):
             (req.email, hashed, name),
         )
 
-        # Insert into Bidder table (all new sign-ups are Buyers)
+        # Handle address: only create an Address row if they gave us a zipcode
+        home_address_id = None
+        if req.zipcode:
+            # Check the zip exists in ZipCode table (seeded from dataset)
+            cursor.execute("SELECT zipcode FROM ZipCode WHERE zipcode = %s", (req.zipcode,))
+            if cursor.fetchone():
+                # Generate a new UUID for this address
+                home_address_id = str(uuid.uuid4())
+                cursor.execute(
+                    "INSERT INTO Address (address_id, zipcode, street_num, street_name) VALUES (%s, %s, %s, %s)",
+                    (home_address_id, req.zipcode, req.street_num, req.street_name),
+                )
+            # If zipcode doesn't exist in our table, skip address silently
+
+        # Insert into Bidder table with all optional fields
         cursor.execute(
-            "INSERT INTO Bidder (email, first_name, last_name, major, age) VALUES (%s, %s, %s, %s, %s)",
-            (req.email, req.first_name, req.last_name, req.major, req.age),
+            "INSERT INTO Bidder (email, first_name, last_name, age, major, home_address_id) VALUES (%s, %s, %s, %s, %s, %s)",
+            (req.email, req.first_name, req.last_name, req.age, req.major, home_address_id),
         )
     db.commit()
 
