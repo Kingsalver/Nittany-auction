@@ -73,8 +73,8 @@ def register(req: RegisterRequest, db=Depends(get_db)):
 
         # Insert into Bidder table (all new sign-ups are Buyers)
         cursor.execute(
-            "INSERT INTO Bidder (email, street, zip, major, age) VALUES (%s, %s, %s, %s, %s)",
-            (req.email, req.street, req.zip, req.major, req.age),
+            "INSERT INTO Bidder (email, first_name, last_name, major, age) VALUES (%s, %s, %s, %s, %s)",
+            (req.email, req.first_name, req.last_name, req.major, req.age),
         )
     db.commit()
 

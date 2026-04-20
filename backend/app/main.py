@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, products
+from app.routers import auth, products, requests
 
 app = FastAPI(
     title="Nittany Auction API",
@@ -17,9 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register the auth routes (/api/login, /api/register, etc.)
+# Register routers
 app.include_router(auth.router)
 app.include_router(products.router)
+app.include_router(requests.router)
 
 @app.get("/api/health")
 def health_check():

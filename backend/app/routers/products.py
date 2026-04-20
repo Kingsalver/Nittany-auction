@@ -39,12 +39,10 @@ def get_category_node(category_name: str, db=Depends(get_db)):
         )
         children = cursor.fetchall()
 
-        # Products directly assigned to this category.
-        # Seeded CSV data places products at intermediate nodes, so we return
-        # products at any level. New listings via POST /api/products are still
-        # restricted to leaf categories at creation time.
+        # Products directly in this category (only if leaf)
         products = []
-        if True:
+        if cat["is_leaf"]:
+            cursor.execute(
                 """
                 SELECT p.product_id, p.seller_email, p.listing_id,
                        p.category_name, p.auction_title, p.product_name,

@@ -45,6 +45,12 @@ class Token(BaseModel):
     email: str
 
 
+# HelpDesk Request model — matches professor's Request table schema
+class RequestCreate(BaseModel):
+    request_type: str          # e.g. "BidderRegistration", "ChangeID", "AddCategory"
+    request_desc: Optional[str] = None
+
+
 # ZipCode Model
 class ZipCodeOut(BaseModel):
     zip: str
