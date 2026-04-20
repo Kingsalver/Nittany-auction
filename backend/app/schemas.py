@@ -224,17 +224,14 @@ class NotificationOut(BaseModel):
 
 
 # Request Model
-class RequestCreate(BaseModel):
-    submitted_by_email: EmailStr
-    request_type: str
-
-
-class RequestOut(RequestCreate):
+class RequestOut(BaseModel):
     request_id: int
+    sender_email: EmailStr
+    request_type: str
+    request_desc: Optional[str] = None
+    request_status: int
     date_submitted: datetime
-    status: str
-    handled_by_email: Optional[EmailStr] = None
-    handled_timestamp: Optional[datetime] = None
+    helpdesk_staff_email: Optional[EmailStr] = None
 
 
 # ListingQuestion Model

@@ -118,7 +118,7 @@ def complete_request(request_id: int, current_user=Depends(get_current_user), db
             cursor.execute("SELECT email FROM Seller WHERE email = %s", (req["sender_email"],))
             if not cursor.fetchone():
                 cursor.execute(
-                    "INSERT INTO Seller (email, bank_routing_number, bank_account_number, balance) VALUES (%s, %s, %s, 0.00)",
+                    "INSERT INTO Seller (email, bank_routing_no, bank_account_no, account_balance) VALUES (%s, %s, %s, 0.00)",
                     (req["sender_email"], routing, account)
                 )
 
