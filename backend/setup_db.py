@@ -524,14 +524,18 @@ def update_is_leaf(cursor):
     print("  Computing is_leaf flags...")
     # Reset all to FALSE first
     cursor.execute("UPDATE Category SET is_leaf = FALSE")
-    # Mark leaves: categories that appear in no row's parent_category column
+    # Mark leaves: categories that appear in no row's parent_category column.
+    # Wrapped in a derived table to satisfy MySQL's restriction on updating
+    # a table that is also referenced in the subquery's FROM clause (error 1093).
     cursor.execute("""
         UPDATE Category
         SET is_leaf = TRUE
         WHERE category_name NOT IN (
-            SELECT DISTINCT parent_category
-            FROM Category
-            WHERE parent_category IS NOT NULL
+            SELECT parent_category FROM (
+                SELECT DISTINCT parent_category
+                FROM Category
+                WHERE parent_category IS NOT NULL
+            ) AS parents
         )
     """)
     cursor.execute("SELECT COUNT(*) FROM Category WHERE is_leaf = TRUE")
