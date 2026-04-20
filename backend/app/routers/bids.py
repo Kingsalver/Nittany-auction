@@ -71,7 +71,7 @@ def place_bid(
                 )
                 cursor.execute(
                     """
-                    INSERT INTO Transactions (product_id, seller_email, buyer_email, payment_date, payment)
+                    INSERT INTO Transaction (product_id, seller_email, buyer_email, payment_date, payment)
                     VALUES (%s, %s, %s, CURDATE(), %s)
                     """,
                     (product_id, listing["seller_email"], current_user["email"], bid.bid_price),
