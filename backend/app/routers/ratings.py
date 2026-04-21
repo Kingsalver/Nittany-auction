@@ -23,6 +23,23 @@ def submit_rating(
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Seller not found")
 
+        # bidder must have a completed, paid transaction with this seller
+        cursor.execute(
+            """
+            SELECT 1 FROM Transaction
+            WHERE seller_email = %s
+              AND buyer_email = %s
+              AND payment_status = 'completed'
+            LIMIT 1
+            """,
+            (req.seller_email, current_user["email"]),
+        )
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only rate a seller after winning and paying for one of their auctions",
+            )
+
         try:
             cursor.execute(
                 """
