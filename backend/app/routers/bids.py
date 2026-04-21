@@ -21,7 +21,7 @@ def place_bid(
         cursor.execute(
             """
             SELECT p.product_id, p.seller_email, p.listing_status, p.reserve_price,
-                   p.max_bids,
+                   p.max_bids, p.auction_title,
                    COUNT(b.bid_id) AS bid_count,
                    MAX(b.bid_price) AS highest_bid,
                    (SELECT bidder_email FROM Bid
@@ -75,6 +75,18 @@ def place_bid(
                     VALUES (%s, %s, %s, CURDATE(), %s)
                     """,
                     (product_id, listing["seller_email"], current_user["email"], bid.bid_price),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO Notification (bidder_email, product_id, notification_type, message)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (
+                        current_user["email"],
+                        product_id,
+                        "Auction Won",
+                        f"Congratulations! You won the auction for '{listing['auction_title']}' with your final bid of ${bid.bid_price:.2f}."
+                    )
                 )
 
         db.commit()

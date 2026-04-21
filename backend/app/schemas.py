@@ -164,6 +164,8 @@ class ProductOut(BaseModel):
     listing_status: str
     created_at: datetime
     photo_path: Optional[str] = None
+    bid_count: Optional[int] = 0
+    highest_bid: Optional[float] = None
 
 
 # Bid Model
@@ -245,3 +247,14 @@ class QuestionOut(QuestionCreate):
     question_id: int
     answer_text: Optional[str] = None
     asked_at: datetime
+
+# Notification Model
+class NotificationOut(BaseModel):
+    notification_id: int
+    bidder_email: str
+    product_id: int
+    notification_type: str
+    message: str
+    sent_at: datetime
+    is_read: bool
+

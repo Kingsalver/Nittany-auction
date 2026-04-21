@@ -195,10 +195,13 @@ def get_products(db=Depends(get_db)):
     with db.cursor() as cursor:
         cursor.execute(
             """
-            SELECT p.*, u.name AS seller_name 
+            SELECT p.*, u.name AS seller_name,
+                   COUNT(b.bid_id) AS bid_count, MAX(b.bid_price) AS highest_bid
             FROM Product p
             JOIN User u ON p.seller_email = u.email
+            LEFT JOIN Bid b ON p.product_id = b.product_id
             WHERE p.listing_status = 'active'
+            GROUP BY p.product_id
             ORDER BY p.created_at DESC
             """
         )
@@ -284,7 +287,37 @@ def get_seller_products(email: str, db=Depends(get_db)):
     """All listings for a seller, grouped by status, newest first."""
     with db.cursor() as cursor:
         cursor.execute(
-            "SELECT * FROM Product WHERE seller_email = %s ORDER BY listing_status, created_at DESC",
+            """
+            SELECT p.*, u.name AS seller_name,
+                   COUNT(b.bid_id) AS bid_count, MAX(b.bid_price) AS highest_bid
+            FROM Product p
+            JOIN User u ON p.seller_email = u.email
+            LEFT JOIN Bid b ON p.product_id = b.product_id
+            WHERE p.seller_email = %s
+            GROUP BY p.product_id
+            ORDER BY p.listing_status, p.created_at DESC
+            """,
+            (email,)
+        )
+        return cursor.fetchall()
+
+@router.get("/bidders/{email}/auctions", response_model=list[ProductOut])
+def get_bidder_auctions(email: str, db=Depends(get_db)):
+    """All active listings that a buyer has bid on."""
+    with db.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT p.*, u.name AS seller_name,
+                   COUNT(b.bid_id) AS bid_count, MAX(b.bid_price) AS highest_bid
+            FROM Product p
+            JOIN User u ON p.seller_email = u.email
+            LEFT JOIN Bid b ON p.product_id = b.product_id
+            WHERE p.listing_status = 'active' AND p.product_id IN (
+                SELECT product_id FROM Bid WHERE bidder_email = %s
+            )
+            GROUP BY p.product_id
+            ORDER BY p.created_at DESC
+            """,
             (email,),
         )
         return cursor.fetchall()
