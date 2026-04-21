@@ -58,7 +58,7 @@ def add_to_wishlist(product_id: int, current_user: dict = Depends(get_current_us
             )
             db.commit()
         except pymysql.err.IntegrityError:
-            pass  # Already in wishlist — treat as success
+            pass  #if we're already in wishlist just treat as success
 
     return {"detail": "Added to wishlist"}
 
