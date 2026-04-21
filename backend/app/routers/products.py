@@ -8,8 +8,7 @@ router = APIRouter(prefix="/api", tags=["Products"])
 
 
 def _get_descendant_leaves(cursor, root_name: str) -> list[str]:
-    """Walk the category tree downward, collecting all leaf category names.
-    All DB values come from parameterized queries — no user input interpolated."""
+    # get all leaf categories
     cursor.execute(
         "SELECT is_leaf FROM Category WHERE category_name = %s", (root_name,)
     )
@@ -39,7 +38,7 @@ def _get_descendant_leaves(cursor, root_name: str) -> list[str]:
 
 @router.get("/categories/leaf", response_model=list[CategoryOut])
 def get_leaf_categories(db=Depends(get_db)):
-    """All leaf categories — the only valid targets for new product listings."""
+    # these are the only valid categories users can put listings in
     with db.cursor() as cursor:
         cursor.execute(
             "SELECT * FROM Category WHERE is_leaf = TRUE AND status = 'active'"
@@ -49,7 +48,7 @@ def get_leaf_categories(db=Depends(get_db)):
 
 @router.get("/categories")
 def get_top_categories(db=Depends(get_db)):
-    """Top-level categories (no parent) — entry point for hierarchy browsing."""
+    # get parent categories for the homepage
     with db.cursor() as cursor:
         cursor.execute(
             "SELECT category_name, is_leaf FROM Category "
@@ -60,8 +59,7 @@ def get_top_categories(db=Depends(get_db)):
 
 @router.get("/categories/{category_name}/ancestors")
 def get_category_ancestors(category_name: str, db=Depends(get_db)):
-    """Return the ancestor chain from root down to this category for breadcrumb rendering.
-    category_name is always passed as a parameterized value."""
+    # get the breadcrumb path for a category
     with db.cursor() as cursor:
         path = []
         current = category_name
@@ -89,7 +87,7 @@ def search_products(
     category: Optional[str] = Query(None, max_length=255),
     db=Depends(get_db),
 ):
-    """Keyword + price + category search. All filters use parameterized queries."""
+    # search by keyword, price, category
     with db.cursor() as cursor:
         conditions = ["p.listing_status = 'active'"]
         params: list = []
@@ -141,10 +139,9 @@ def search_products(
 
 @router.get("/categories/{category_name}", response_model=dict)
 def get_category_node(category_name: str, db=Depends(get_db)):
-    """Return a category's direct subcategories and its active product listings.
-    This is the primary category-hierarchy traversal endpoint — no hardcoding."""
+    # get subcategories and active products inside this category
     with db.cursor() as cursor:
-        # Confirm the category exists
+        # verify category exists
         cursor.execute(
             "SELECT category_id, category_name, parent_category, is_leaf "
             "FROM Category WHERE category_name = %s",
@@ -191,7 +188,7 @@ def get_category_node(category_name: str, db=Depends(get_db)):
 
 @router.get("/products", response_model=list[ProductOut])
 def get_products(db=Depends(get_db)):
-    """All active product listings, newest first."""
+    # grab all active products and newest ones first
     with db.cursor() as cursor:
         cursor.execute(
             """
@@ -214,8 +211,7 @@ def create_product(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    """Create a new auction listing. Seller or HelpDesk only.
-    listing_id is auto-assigned as max(existing listing_id for this seller) + 1."""
+    # make a new auction listing (only sellers and helpdesk can do this)
     role = current_user.get("role", "").lower()
     if role not in ["seller", "helpdesk"]:
         raise HTTPException(
@@ -284,7 +280,7 @@ def create_product(
 
 @router.get("/sellers/{email}/products", response_model=list[ProductOut])
 def get_seller_products(email: str, db=Depends(get_db)):
-    """All listings for a seller, grouped by status, newest first."""
+    # get all products from a specific seller
     with db.cursor() as cursor:
         cursor.execute(
             """
@@ -303,7 +299,7 @@ def get_seller_products(email: str, db=Depends(get_db)):
 
 @router.get("/bidders/{email}/auctions", response_model=list[ProductOut])
 def get_bidder_auctions(email: str, db=Depends(get_db)):
-    """All active listings that a buyer has bid on."""
+    # get active auctions that they put a bid on
     with db.cursor() as cursor:
         cursor.execute(
             """

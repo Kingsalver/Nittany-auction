@@ -1,12 +1,5 @@
-"""
-routers/requests.py — HelpDesk request management endpoints.
-
-Request flow:
-  - Any logged-in user can submit a request (POST /api/requests)
-  - HelpDesk staff can view all requests (GET /api/requests)
-  - HelpDesk staff can claim a request, assigning it to themselves (PATCH /api/requests/{id}/claim)
-  - HelpDesk staff can mark a request as complete (PATCH /api/requests/{id}/complete)
-"""
+# endpoints for helpdesk requests
+# users can make requests and helpdesk can claim or finish them
 
 from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_db
@@ -18,7 +11,7 @@ router = APIRouter(prefix="/api", tags=["Requests"])
 
 @router.post("/requests")
 def submit_request(req: RequestCreate, current_user=Depends(get_current_user), db=Depends(get_db)):
-    """Any logged-in user can submit a request to HelpDesk."""
+    # let any logged in user make a request
     with db.cursor() as cursor:
         cursor.execute(
             """
@@ -33,7 +26,7 @@ def submit_request(req: RequestCreate, current_user=Depends(get_current_user), d
 
 @router.get("/requests")
 def get_requests(current_user=Depends(get_current_user), db=Depends(get_db)):
-    """HelpDesk staff can see all requests. Bidders can see their own."""
+    # helpdesk sees everything, users just see their own requests
     with db.cursor() as cursor:
         if current_user["role"] == "HelpDesk":
             cursor.execute(
@@ -60,7 +53,7 @@ def get_requests(current_user=Depends(get_current_user), db=Depends(get_db)):
 
 @router.patch("/requests/{request_id}/claim")
 def claim_request(request_id: int, current_user=Depends(get_current_user), db=Depends(get_db)):
-    """HelpDesk staff claims an unassigned request, assigning it to themselves."""
+    # helpdesk staff assigns a request to themselves
     if current_user["role"] != "HelpDesk":
         raise HTTPException(status_code=403, detail="Only HelpDesk staff can claim requests")
 
@@ -86,9 +79,7 @@ def claim_request(request_id: int, current_user=Depends(get_current_user), db=De
 
 @router.patch("/requests/{request_id}/complete")
 def complete_request(request_id: int, current_user=Depends(get_current_user), db=Depends(get_db)):
-    """HelpDesk staff marks a request as complete (status = 1).
-    For BecomeASeller requests, automatically inserts the user into the Seller table.
-    """
+    # mark request as done and if it's a seller request, add them to the seller table
     import json as _json
 
     if current_user["role"] != "HelpDesk":
@@ -106,7 +97,7 @@ def complete_request(request_id: int, current_user=Depends(get_current_user), db
         if req["request_status"] == 1:
             raise HTTPException(status_code=400, detail="Request is already completed")
 
-        # Handle BecomeASeller: parse bank info and insert into Seller table
+        # handle become_a_seller request and add to db
         if req["request_type"] == "BecomeASeller":
             try:
                 desc = _json.loads(req["request_desc"] or "{}")
