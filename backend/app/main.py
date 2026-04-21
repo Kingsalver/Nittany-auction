@@ -8,7 +8,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Allow CORS for the frontend dev servers
+#allow CORS for the frontend dev servers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:5173"],
@@ -17,7 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
+#register all le routers
 app.include_router(auth.router)
 app.include_router(products.router)
 app.include_router(bids.router)

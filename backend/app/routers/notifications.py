@@ -7,9 +7,9 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 @router.get("", response_model=list[NotificationOut])
 def get_unread_notifications(current_user: dict = Depends(get_current_user), db=Depends(get_db)):
-    """Fetch all unread notifications for the current logged-in buyer"""
+    # get unread notifications for the buyer
     if current_user["role"] != "Buyer":
-        return [] # Only buyers get notifications in this schema
+        return [] # only buyers get notifications right now
         
     with db.cursor() as cursor:
         cursor.execute(
@@ -25,9 +25,9 @@ def get_unread_notifications(current_user: dict = Depends(get_current_user), db=
         
 @router.patch("/{notification_id}/read")
 def mark_notification_read(notification_id: int, current_user: dict = Depends(get_current_user), db=Depends(get_db)):
-    """Mark a notification as read"""
+    # mark this specific notification as read
     with db.cursor() as cursor:
-        # First verify it belongs to them
+        # check if it belongs to them
         cursor.execute("SELECT bidder_email FROM Notification WHERE notification_id = %s", (notification_id,))
         notif = cursor.fetchone()
         

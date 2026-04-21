@@ -14,7 +14,7 @@ def submit_rating(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    """Submit a rating for a seller. Buyers only; one rating per (bidder, seller, date)."""
+    # rate a seller (only buyers can do it, 1 per day)
     if current_user["role"] != "Buyer":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only buyers can submit ratings")
 
@@ -49,7 +49,7 @@ def submit_rating(
 
 @router.get("/sellers/{email}/ratings", response_model=list[RatingOut])
 def get_seller_ratings(email: str, db=Depends(get_db)):
-    """All ratings for a seller, newest first. No auth required."""
+    # get all ratings for the seller with newest first
     with db.cursor() as cursor:
         cursor.execute(
             "SELECT bidder_email, seller_email, rating_date, rating, rating_desc "

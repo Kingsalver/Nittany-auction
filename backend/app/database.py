@@ -6,9 +6,7 @@ load_dotenv()
 
 
 def get_db_connection():
-    """
-    Create and return a raw pymysql connection using environment variables.
-    """
+    # make a connection to the database
     connection = pymysql.connect(
         host=os.getenv("DB_HOST", "localhost"),
         port=int(os.getenv("DB_PORT", 3306)),

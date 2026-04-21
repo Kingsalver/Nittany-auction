@@ -1,7 +1,4 @@
-"""
-Pydantic schemas for request/response validation in the FastAPI layer.
-These are NOT database models — they only validate API data shapes.
-"""
+# schemas for inputs and outputs
 
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
@@ -26,7 +23,7 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
-# Model for signup page, this is what the frontend sends to the backend and keeps the structure of the data uniform
+# model for signup page
 class RegisterRequest(BaseModel):
     email: str
     password: str
@@ -46,7 +43,7 @@ class Token(BaseModel):
     email: str
 
 
-# HelpDesk Request model — matches professor's Request table schema
+# request model to match the professors schema
 class RequestCreate(BaseModel):
     request_type: str          # e.g. "BidderRegistration", "ChangeID", "AddCategory"
     request_desc: Optional[str] = None

@@ -18,26 +18,27 @@ router = APIRouter(prefix="/api", tags=["Authentication"])
 
 @router.post("/login")
 def login(req: LoginRequest, db=Depends(get_db)):
-    """Log in with email and password. Returns a JWT token."""
+    #Auth for user login. This function returns a JWT token for the auth
     with db.cursor() as cursor:
-        # Check if the user exists
+        #first we have to check if the user exists
         cursor.execute("SELECT email, password FROM User WHERE email = %s", (req.email,))
         user = cursor.fetchone()
 
+        #if we cant find the user we raise an except.
         if not user or not verify_password(req.password, user["password"]):
             raise HTTPException(status_code=401, detail="Invalid email or password")
 
-        # Figure out the user's role
+        #get the users role
         role = get_user_role(req.email, cursor)
 
-    # Create a JWT token with the user's email and role
+    #create a JWT token with the user's email and role for auth
     expires = timedelta(minutes=TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": req.email, "role": role},
         expires_delta=expires,
     )
 
-    # Save the session in the Sessions table
+    #save the token and the session in the Sessions table
     expires_at = datetime.now(timezone.utc) + expires
     with db.cursor() as cursor:
         cursor.execute(
@@ -56,16 +57,16 @@ def login(req: LoginRequest, db=Depends(get_db)):
 
 @router.post("/register")
 def register(req: RegisterRequest, db=Depends(get_db)):
-    """Register a new user as a Buyer. Inserts into User, Address (if address given), and Bidder."""
+    #route to register a new user as a Buyer. We also insert into User, Address (if address given), and Bidder
     import uuid
 
     with db.cursor() as cursor:
-        # Check if email is already taken
+        #quick check if email is already taken
         cursor.execute("SELECT email FROM User WHERE email = %s", (req.email,))
         if cursor.fetchone():
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        # Insert into User table with hashed password
+        #insert into User table with hashed password
         hashed = hash_password(req.password)
         name = f"{req.first_name} {req.last_name}"
         cursor.execute(
@@ -73,28 +74,29 @@ def register(req: RegisterRequest, db=Depends(get_db)):
             (req.email, hashed, name),
         )
 
-        # Handle address: only create an Address row if they gave us a zipcode
+        #this is to handle the optional address and zipcode. we create the row if its new.
         home_address_id = None
         if req.zipcode:
-            # Check the zip exists in ZipCode table (seeded from dataset)
+            #check the zip exists in ZipCode table (seeded from dataset)
             cursor.execute("SELECT zipcode FROM ZipCode WHERE zipcode = %s", (req.zipcode,))
             if cursor.fetchone():
-                # Generate a new UUID for this address
+                #generate a new UUID for this address
                 home_address_id = str(uuid.uuid4())
                 cursor.execute(
                     "INSERT INTO Address (address_id, zipcode, street_num, street_name) VALUES (%s, %s, %s, %s)",
                     (home_address_id, req.zipcode, req.street_num, req.street_name),
                 )
-            # If zipcode doesn't exist in our table, skip address silently
+            #if zipcode doesn't exist in our table, skip address
 
-        # Insert into Bidder table with all optional fields
+        #insert into Bidder table with all optional fields
         cursor.execute(
             "INSERT INTO Bidder (email, first_name, last_name, age, major, home_address_id) VALUES (%s, %s, %s, %s, %s, %s)",
             (req.email, req.first_name, req.last_name, req.age, req.major, home_address_id),
         )
     db.commit()
 
-    # Auto-login: create a token right away
+    #when they create the account and its successful we can just create a token right away and log them in
+    #realistically should create a function for this code block but eh
     expires = timedelta(minutes=TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": req.email, "role": "Buyer"},
@@ -119,21 +121,21 @@ def register(req: RegisterRequest, db=Depends(get_db)):
 
 @router.get("/users/me")
 def get_me(current_user=Depends(get_current_user)):
-    """Get the currently logged-in user's info. Requires a valid token."""
+    #get the currently logged in user's info but they need a valid token
     return current_user
 
 
 @router.get("/profile")
 def get_profile(current_user=Depends(get_current_user), db=Depends(get_db)):
-    """Get the full profile of the logged-in user — User + Bidder + Address joined."""
+    #get the full profile of the logged in user User + Bidder + Address joined
     email = current_user["email"]
 
     with db.cursor() as cursor:
-        # Get base user info
+        #get base user info
         cursor.execute("SELECT email, name FROM User WHERE email = %s", (email,))
         user = cursor.fetchone()
 
-        # Get bidder info if they are a bidder
+        #get bidder info if they are a bidder
         cursor.execute(
             """
             SELECT b.first_name, b.last_name, b.age, b.major, b.phone, b.annual_income,
@@ -167,26 +169,26 @@ def get_profile(current_user=Depends(get_current_user), db=Depends(get_db)):
 
 @router.patch("/profile")
 def update_profile(req: ProfileUpdate, current_user=Depends(get_current_user), db=Depends(get_db)):
-    """Update the logged-in bidder's phone number and/or home address."""
+    #this is for the update feature on the profile page, we let them update the bidder phone number and home address
     import uuid
     email = current_user["email"]
 
     with db.cursor() as cursor:
-        # Update phone directly on Bidder
+        #update phone directly on Bidder
         if req.phone is not None:
             cursor.execute(
                 "UPDATE Bidder SET phone = %s WHERE email = %s",
                 (req.phone, email)
             )
 
-        # Handle address update
+        #handle address update
         if req.zipcode is not None:
             # Check zip exists
             cursor.execute("SELECT zipcode FROM ZipCode WHERE zipcode = %s", (req.zipcode,))
             if not cursor.fetchone():
                 raise HTTPException(status_code=400, detail=f"ZIP code '{req.zipcode}' not found")
 
-            # Check if bidder already has an address
+            #check if bidder already has an address
             cursor.execute(
                 "SELECT home_address_id FROM Bidder WHERE email = %s", (email,)
             )
@@ -194,13 +196,13 @@ def update_profile(req: ProfileUpdate, current_user=Depends(get_current_user), d
             existing_id = row["home_address_id"] if row else None
 
             if existing_id:
-                # Update the existing Address row
+                #update the existing Address row
                 cursor.execute(
                     "UPDATE Address SET zipcode=%s, street_num=%s, street_name=%s WHERE address_id=%s",
                     (req.zipcode, req.street_num, req.street_name, existing_id)
                 )
             else:
-                # Create a new Address row and link it
+                #create a new Address row and link it
                 new_id = str(uuid.uuid4())
                 cursor.execute(
                     "INSERT INTO Address (address_id, zipcode, street_num, street_name) VALUES (%s,%s,%s,%s)",
@@ -216,7 +218,7 @@ def update_profile(req: ProfileUpdate, current_user=Depends(get_current_user), d
 
 @router.post("/logout")
 def logout(current_user=Depends(get_current_user), db=Depends(get_db)):
-    """Log out by deactivating all sessions for this user."""
+    #route to log users out, we just deactivate all the sessions on the user
     with db.cursor() as cursor:
         cursor.execute(
             "UPDATE Sessions SET is_active = 0 WHERE user_email = %s AND is_active = 1",

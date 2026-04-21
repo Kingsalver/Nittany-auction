@@ -13,11 +13,12 @@ def place_bid(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
+    # place a bid (only buyers)
     if current_user["role"] != "Buyer":
         raise HTTPException(status_code=403, detail="Only bidders can place bids")
 
     with db.cursor() as cursor:
-        # Fetch listing state + current highest bid + last bidder in one query
+        # get info about the current listing
         cursor.execute(
             """
             SELECT p.product_id, p.listing_id, p.seller_email, p.listing_status,
@@ -104,6 +105,7 @@ def place_bid(
 
 @router.get("/products/{product_id}/bids", response_model=list[BidOut])
 def get_bids(product_id: int, db=Depends(get_db)):
+    # get all bids for this product
     with db.cursor() as cursor:
         cursor.execute(
             """
