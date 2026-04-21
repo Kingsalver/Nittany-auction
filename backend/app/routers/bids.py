@@ -20,8 +20,8 @@ def place_bid(
         # Fetch listing state + current highest bid + last bidder in one query
         cursor.execute(
             """
-            SELECT p.product_id, p.seller_email, p.listing_status, p.reserve_price,
-                   p.max_bids, p.auction_title,
+            SELECT p.product_id, p.listing_id, p.seller_email, p.listing_status,
+                   p.reserve_price, p.max_bids, p.auction_title,
                    COUNT(b.bid_id) AS bid_count,
                    MAX(b.bid_price) AS highest_bid,
                    (SELECT bidder_email FROM Bid
@@ -59,8 +59,8 @@ def place_bid(
     try:
         with db.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO Bid (product_id, seller_email, bidder_email, bid_price) VALUES (%s, %s, %s, %s)",
-                (product_id, listing["seller_email"], current_user["email"], bid.bid_price),
+                "INSERT INTO Bid (product_id, listing_id, seller_email, bidder_email, bid_price) VALUES (%s, %s, %s, %s, %s)",
+                (product_id, listing["listing_id"], listing["seller_email"], current_user["email"], bid.bid_price),
             )
             new_bid_count = listing["bid_count"] + 1
 
@@ -71,10 +71,10 @@ def place_bid(
                 )
                 cursor.execute(
                     """
-                    INSERT INTO Transaction (product_id, seller_email, buyer_email, payment_date, payment)
-                    VALUES (%s, %s, %s, CURDATE(), %s)
+                    INSERT INTO Transaction (product_id, listing_id, seller_email, buyer_email, payment_date, payment)
+                    VALUES (%s, %s, %s, %s, CURDATE(), %s)
                     """,
-                    (product_id, listing["seller_email"], current_user["email"], bid.bid_price),
+                    (product_id, listing["listing_id"], listing["seller_email"], current_user["email"], bid.bid_price),
                 )
                 cursor.execute(
                     """

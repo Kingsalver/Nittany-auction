@@ -180,7 +180,7 @@ def seed_sellers(cursor):
         ensure_user(cursor, email)
         cursor.execute(
             "INSERT IGNORE INTO Seller "
-            "(email, bank_routing_no, bank_account_no, account_balance) "
+            "(email, bank_routing_number, bank_account_number, balance) "
             "VALUES (%s, %s, %s, %s)",
             (
                 email,
@@ -391,9 +391,9 @@ def seed_bids(cursor, product_lookup):
         price = row.get("Bid_Price", "0").replace("$", "").replace(",", "").strip() or "0"
         cursor.execute(
             "INSERT IGNORE INTO Bid "
-            "(bid_id, product_id, seller_email, bidder_email, bid_price) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            (int(row["Bid_ID"]), product_id, seller, bidder, float(price)),
+            "(bid_id, product_id, listing_id, seller_email, bidder_email, bid_price) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (int(row["Bid_ID"]), product_id, listing_id, seller, bidder, float(price)),
         )
         inserted += cursor.rowcount
 
@@ -423,12 +423,13 @@ def seed_transactions(cursor, product_lookup):
 
         cursor.execute(
             "INSERT IGNORE INTO Transaction "
-            "(transaction_id, product_id, seller_email, buyer_email, "
+            "(transaction_id, product_id, listing_id, seller_email, buyer_email, "
             " payment_date, payment, payment_status) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 int(row["Transaction_ID"]),
                 product_id,
+                listing_id,
                 seller,
                 buyer,
                 pay_date,

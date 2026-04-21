@@ -121,11 +121,11 @@ CREATE TABLE Bidder (
 --    new rating submission (Phase 2 §8)
 -- ============================================================
 CREATE TABLE Seller (
-    email           VARCHAR(255)  NOT NULL,
-    bank_routing_no VARCHAR(50),
-    bank_account_no VARCHAR(50),
-    account_balance DECIMAL(12,2) DEFAULT 0.00,
-    avg_rating      DECIMAL(3,2),
+    email                VARCHAR(255)  NOT NULL,
+    bank_routing_number  VARCHAR(50),
+    bank_account_number  VARCHAR(50),
+    balance              DECIMAL(12,2) DEFAULT 0.00,
+    avg_rating           DECIMAL(3,2),
     PRIMARY KEY (email),
     FOREIGN KEY (email) REFERENCES User(email)
 );
@@ -246,6 +246,7 @@ CREATE TABLE Product (
 CREATE TABLE Bid (
     bid_id        INT           NOT NULL AUTO_INCREMENT,
     product_id    INT           NOT NULL,
+    listing_id    INT           NOT NULL,
     seller_email  VARCHAR(255)  NOT NULL,
     bidder_email  VARCHAR(255)  NOT NULL,
     bid_price     DECIMAL(12,2) NOT NULL,
@@ -267,6 +268,7 @@ CREATE TABLE Bid (
 CREATE TABLE Transaction (
     transaction_id INT           NOT NULL AUTO_INCREMENT,
     product_id     INT           NOT NULL,
+    listing_id     INT           NOT NULL,
     seller_email   VARCHAR(255)  NOT NULL,
     buyer_email    VARCHAR(255)  NOT NULL,
     payment_date   DATE,

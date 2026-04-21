@@ -85,9 +85,9 @@ class BidderOut(BidderCreate):
 # Seller Model
 class SellerCreate(BaseModel):
     email: EmailStr
-    bank_routing_no: Optional[str] = None
-    bank_account_no: Optional[str] = None
-    account_balance: float = 0.00
+    bank_routing_number: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    balance: float = 0.00
 
 
 class SellerOut(SellerCreate):

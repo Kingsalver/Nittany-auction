@@ -308,6 +308,33 @@ def main():
         print(f"  [{FAIL}] [FIX-6] CreditCard column names wrong: {e}")
         failures.append("[FIX-6] CreditCard columns")
 
+    # [FIX-8] Seller uses spec column names: bank_routing_number, bank_account_number, balance
+    try:
+        cursor.execute("SELECT bank_routing_number, bank_account_number, balance FROM Seller LIMIT 1")
+        cursor.fetchall()
+        print(f"  [{PASS}] [FIX-8] Seller column names match spec (bank_routing_number, bank_account_number, balance)")
+    except Exception as e:
+        print(f"  [{FAIL}] [FIX-8] Seller column names wrong: {e}")
+        failures.append("[FIX-8] Seller column names")
+
+    # [FIX-9] Bid.listing_id column exists
+    try:
+        cursor.execute("SELECT listing_id FROM Bid LIMIT 1")
+        cursor.fetchall()
+        print(f"  [{PASS}] [FIX-9] Bid.listing_id column exists")
+    except Exception as e:
+        print(f"  [{FAIL}] [FIX-9] Bid.listing_id column missing: {e}")
+        failures.append("[FIX-9] Bid.listing_id")
+
+    # [FIX-9] Transaction.listing_id column exists
+    try:
+        cursor.execute("SELECT listing_id FROM Transaction LIMIT 1")
+        cursor.fetchall()
+        print(f"  [{PASS}] [FIX-9] Transaction.listing_id column exists")
+    except Exception as e:
+        print(f"  [{FAIL}] [FIX-9] Transaction.listing_id column missing: {e}")
+        failures.append("[FIX-9] Transaction.listing_id")
+
     # [FIX-7] Category has UNIQUE category_name — test by checking for duplicates
     check(cursor,
           "[FIX-7] Category category_name is unique (no duplicates)",
