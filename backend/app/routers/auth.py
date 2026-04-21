@@ -3,7 +3,7 @@ import pymysql
 
 from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_db
-from app.schemas import LoginRequest, RegisterRequest, Token, ProfileUpdate
+from app.schemas import LoginRequest, RegisterRequest, Token, ProfileUpdate, PasswordUpdate
 from app.auth import (
     TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -214,6 +214,22 @@ def update_profile(req: ProfileUpdate, current_user=Depends(get_current_user), d
                 )
     db.commit()
     return {"detail": "Profile updated successfully"}
+
+
+@router.patch("/profile/password")
+def change_password(req: PasswordUpdate, current_user=Depends(get_current_user), db=Depends(get_db)):
+    email = current_user["email"]
+    with db.cursor() as cursor:
+        cursor.execute("SELECT password FROM User WHERE email = %s", (email,))
+        user = cursor.fetchone()
+        if not user or not verify_password(req.current_password, user["password"]):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+        cursor.execute(
+            "UPDATE User SET password = %s WHERE email = %s",
+            (hash_password(req.new_password), email),
+        )
+    db.commit()
+    return {"detail": "Password updated successfully"}
 
 
 @router.post("/logout")

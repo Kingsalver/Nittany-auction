@@ -444,7 +444,7 @@ def seed_transactions(cursor, product_lookup):
 
 def seed_ratings(cursor):
     """[FIX-4] Rating PK is (bidder_email, seller_email, rating_date).
-    No transaction_id FK — historical ratings exist beyond the Transaction table."""
+    API enforces per-product transaction check; historical CSV data seeded here."""
     print("  Loading Rating...")
     rows = read_csv("Ratings.csv")
     inserted = 0

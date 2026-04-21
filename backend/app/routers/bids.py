@@ -72,8 +72,8 @@ def place_bid(
                 )
                 cursor.execute(
                     """
-                    INSERT INTO Transaction (product_id, listing_id, seller_email, buyer_email, payment_date, payment)
-                    VALUES (%s, %s, %s, %s, CURDATE(), %s)
+                    INSERT INTO Transaction (product_id, listing_id, seller_email, buyer_email, payment, payment_status)
+                    VALUES (%s, %s, %s, %s, %s, 'pending')
                     """,
                     (product_id, listing["listing_id"], listing["seller_email"], current_user["email"], bid.bid_price),
                 )
@@ -86,9 +86,28 @@ def place_bid(
                         current_user["email"],
                         product_id,
                         "Auction Won",
-                        f"Congratulations! You won the auction for '{listing['auction_title']}' with your final bid of ${bid.bid_price:.2f}."
+                        f"Congratulations! You won '{listing['auction_title']}' with a bid of ${bid.bid_price:.2f}. Please complete your payment."
                     )
                 )
+                # notify all other bidders that they did not win
+                cursor.execute(
+                    "SELECT DISTINCT bidder_email FROM Bid WHERE product_id = %s AND bidder_email != %s",
+                    (product_id, current_user["email"]),
+                )
+                losers = cursor.fetchall()
+                for loser in losers:
+                    cursor.execute(
+                        """
+                        INSERT INTO Notification (bidder_email, product_id, notification_type, message)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (
+                            loser["bidder_email"],
+                            product_id,
+                            "Auction Ended",
+                            f"The auction for '{listing['auction_title']}' has ended. Unfortunately you did not win this auction."
+                        )
+                    )
 
         db.commit()
     except Exception as e:

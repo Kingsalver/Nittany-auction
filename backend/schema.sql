@@ -287,8 +287,8 @@ CREATE TABLE Transaction (
 --    Spec: Rating(Bidder_Email, Seller_Email, Date,
 --                 Rating, Rating_Desc)
 --    PK = (bidder_email, seller_email, rating_date)
---    Spec note: "covers more than what's in the transaction table"
---    — historical data exists without a Transaction row.
+--    API enforces: buyer must have a completed Transaction for
+--    the specific product_id before a rating is accepted.
 -- ============================================================
 CREATE TABLE Rating (
     bidder_email VARCHAR(255) NOT NULL,

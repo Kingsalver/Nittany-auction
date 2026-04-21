@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import Optional
-from app.schemas import ProductCreate, ProductOut, CategoryOut
+from app.schemas import ProductCreate, ProductOut, CategoryOut, ProductUpdate, ListingDeactivate
 from app.auth import get_current_user
 from app.database import get_db
 
@@ -296,6 +296,114 @@ def get_seller_products(email: str, db=Depends(get_db)):
             (email,)
         )
         return cursor.fetchall()
+
+@router.get("/products/{product_id}", response_model=dict)
+def get_product(product_id: int, db=Depends(get_db)):
+    with db.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT p.*, u.name AS seller_name,
+                   COUNT(b.bid_id) AS bid_count, MAX(b.bid_price) AS highest_bid
+            FROM Product p
+            JOIN User u ON p.seller_email = u.email
+            LEFT JOIN Bid b ON p.product_id = b.product_id
+            WHERE p.product_id = %s
+            GROUP BY p.product_id
+            """,
+            (product_id,),
+        )
+        product = cursor.fetchone()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
+
+
+@router.patch("/products/{product_id}")
+def update_product(
+    product_id: int,
+    update: ProductUpdate,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    with db.cursor() as cursor:
+        cursor.execute(
+            "SELECT seller_email, listing_status FROM Product WHERE product_id = %s",
+            (product_id,),
+        )
+        product = cursor.fetchone()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if product["seller_email"] != current_user["email"]:
+        raise HTTPException(status_code=403, detail="You do not own this listing")
+    if product["listing_status"] == "sold":
+        raise HTTPException(status_code=403, detail="Sold listings cannot be edited")
+
+    with db.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) AS cnt FROM Bid WHERE product_id = %s", (product_id,))
+        if cursor.fetchone()["cnt"] > 0:
+            raise HTTPException(
+                status_code=403,
+                detail="This listing cannot be updated because bidding has already started",
+            )
+
+        fields = {k: v for k, v in update.model_dump().items() if v is not None}
+        if not fields:
+            return {"detail": "No changes provided"}
+
+        if "category_name" in fields:
+            cursor.execute(
+                "SELECT is_leaf FROM Category WHERE category_name = %s", (fields["category_name"],)
+            )
+            cat = cursor.fetchone()
+            if not cat or not cat["is_leaf"]:
+                raise HTTPException(status_code=400, detail="Category must be an active leaf category")
+
+        set_clause = ", ".join(f"{col} = %s" for col in fields)
+        cursor.execute(
+            f"UPDATE Product SET {set_clause} WHERE product_id = %s",
+            (*fields.values(), product_id),
+        )
+    db.commit()
+    return {"detail": "Listing updated successfully"}
+
+
+@router.patch("/products/{product_id}/deactivate")
+def deactivate_product(
+    product_id: int,
+    body: ListingDeactivate,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    with db.cursor() as cursor:
+        cursor.execute(
+            "SELECT seller_email, listing_status FROM Product WHERE product_id = %s",
+            (product_id,),
+        )
+        product = cursor.fetchone()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if product["seller_email"] != current_user["email"]:
+        raise HTTPException(status_code=403, detail="You do not own this listing")
+    if product["listing_status"] != "active":
+        raise HTTPException(status_code=400, detail="Only active listings can be deactivated")
+
+    with db.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) AS cnt FROM Bid WHERE product_id = %s", (product_id,))
+        bid_count = cursor.fetchone()["cnt"]
+        cursor.execute(
+            """
+            UPDATE Product
+            SET listing_status = 'inactive',
+                removal_reason = %s,
+                bids_at_removal = %s,
+                removal_timestamp = NOW()
+            WHERE product_id = %s
+            """,
+            (body.reason, bid_count, product_id),
+        )
+    db.commit()
+    return {"detail": "Listing deactivated successfully"}
+
 
 @router.get("/bidders/{email}/auctions", response_model=list[ProductOut])
 def get_bidder_auctions(email: str, db=Depends(get_db)):

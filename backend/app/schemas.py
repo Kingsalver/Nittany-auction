@@ -193,13 +193,49 @@ class TransactionOut(BaseModel):
 # Rating Model
 class RatingCreate(BaseModel):
     seller_email: str
+    product_id: int
     rating_date: date
     rating: int = Field(ge=1, le=5)
     rating_desc: Optional[str] = None
 
 
-class RatingOut(RatingCreate):
+class RatingOut(BaseModel):
     bidder_email: str
+    seller_email: str
+    rating_date: date
+    rating: int
+    rating_desc: Optional[str] = None
+
+
+# Password change
+class PasswordUpdate(BaseModel):
+    current_password: str
+    new_password: str
+
+
+# Credit card (matches DB columns: credit_card_num, expire_month, expire_year, security_code, owner_email)
+class CreditCardDB(BaseModel):
+    credit_card_num: str
+    card_type: Optional[str] = None
+    expire_month: int
+    expire_year: int
+    security_code: str
+
+
+# Product listing update (seller edits before any bids)
+class ProductUpdate(BaseModel):
+    auction_title: Optional[str] = None
+    product_name: Optional[str] = None
+    product_description: Optional[str] = None
+    reserve_price: Optional[float] = None
+    max_bids: Optional[int] = None
+    category_name: Optional[str] = None
+    photo_path: Optional[str] = None
+
+
+# Listing deactivation
+class ListingDeactivate(BaseModel):
+    reason: str
 
 
 # Watchlist Model
