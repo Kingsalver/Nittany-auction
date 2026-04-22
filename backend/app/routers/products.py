@@ -425,3 +425,37 @@ def get_bidder_auctions(email: str, db=Depends(get_db)):
             (email,),
         )
         return cursor.fetchall()
+
+
+@router.get("/bidders/{email}/won")
+def get_bidder_won_auctions(email: str, db=Depends(get_db)):
+    # get all auctions this buyer won (sold + has a transaction record for them)
+    with db.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT p.product_id, p.seller_email, p.listing_id, p.auction_title,
+                   p.product_name, p.photo_path, p.listing_status, p.max_bids,
+                   p.reserve_price, p.created_at,
+                   u.name AS seller_name,
+                   t.payment, t.payment_status, t.transaction_id,
+                   COUNT(b.bid_id) AS bid_count,
+                   MAX(b.bid_price) AS highest_bid,
+                   EXISTS(
+                       SELECT 1 FROM Rating r 
+                       WHERE r.bidder_email = %s 
+                         AND r.seller_email = p.seller_email
+                   ) AS already_reviewed
+            FROM Transaction t
+            JOIN Product p ON t.product_id = p.product_id
+            JOIN User u ON p.seller_email = u.email
+            LEFT JOIN Bid b ON b.product_id = p.product_id
+            WHERE t.buyer_email = %s
+            GROUP BY p.product_id, p.seller_email, p.listing_id, p.auction_title,
+                     p.product_name, p.photo_path, p.listing_status, p.max_bids,
+                     p.reserve_price, p.created_at, u.name, t.payment, 
+                     t.payment_status, t.transaction_id
+            ORDER BY t.transaction_id DESC
+            """,
+            (email, email),
+        )
+        return cursor.fetchall()

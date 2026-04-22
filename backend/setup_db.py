@@ -1,32 +1,3 @@
-"""
-setup_db.py — Populates the NittanyAuction database from CSV dataset.
-
-Usage:
-    mysql -u root -p < schema.sql   # create tables first
-    python setup_db.py              # then seed data
-
-Load order (dependency-safe):
-    1.  ZipCode        (no deps)
-    2.  User           (no deps)
-    3.  Address        (depends on ZipCode)
-    4.  Bidder         (depends on User, Address)
-    5.  Seller         (depends on User)
-    6.  LocalVendor    (depends on Seller, Address)
-    7.  HelpDesk       (depends on User)
-    8.  CreditCard     (depends on Bidder)
-    9.  Category       pass-1: insert names with NULL parent
-    10. Category       pass-2: set parent_category relationships
-    11. Product        (depends on Seller, Category)
-    12. Bid            (depends on Product, Bidder, Seller)
-    13. Transaction    (depends on Product, Seller, Bidder)
-    14. Rating         (depends on Bidder, Seller)
-    15. Request        (depends on User)
-    --- post-processing ---
-    16. UPDATE Category.is_leaf
-    17. UPDATE Seller.avg_rating
-    18. UPDATE Product.listing_status = 'sold' for completed transactions
-"""
-
 import os
 import csv
 import hashlib
@@ -34,25 +5,21 @@ import pymysql
 from datetime import datetime
 from dotenv import load_dotenv
 
+# load the env vars
 load_dotenv()
 
+# where the data is
 DATA_DIR = os.path.join(os.path.dirname(__file__), "resources", "NittanyAuctionDataset_v1")
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
+# hashing function
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
-
 
 def csv_path(filename):
     return os.path.join(DATA_DIR, filename)
 
-
+# converts the date format for mysql
 def parse_date(date_str):
-    """Convert '05/05/21' → '2021-05-05'. Returns None on failure."""
     if not date_str:
         return None
     for fmt in ("%m/%d/%y", "%m/%d/%Y"):
@@ -62,15 +29,12 @@ def parse_date(date_str):
             continue
     return None
 
-
 def read_csv(filename):
     with open(csv_path(filename), encoding="utf-8-sig") as f:
         return list(csv.DictReader(f))
 
-
+# helper to make sure a user exists before we add related rows
 def ensure_user(cursor, email, name=""):
-    """Insert a User row if one doesn't exist yet (used when a CSV table
-    references an email that might not be in Users.csv)."""
     cursor.execute("SELECT 1 FROM User WHERE email = %s", (email,))
     if not cursor.fetchone():
         cursor.execute(
@@ -78,13 +42,10 @@ def ensure_user(cursor, email, name=""):
             (email, hash_password("default123"), name or email.split("@")[0]),
         )
 
-
-# ---------------------------------------------------------------------------
-# Seeding functions
-# ---------------------------------------------------------------------------
+# -- SEEDING STUFF --
 
 def seed_zipcodes(cursor):
-    print("  Loading ZipCode...")
+    print("loading zipcodes...")
     rows = read_csv("Zipcode_Info.csv")
     inserted = 0
     for row in rows:
@@ -93,13 +54,10 @@ def seed_zipcodes(cursor):
             (row["zipcode"].strip(), row["city"].strip(), row["state"].strip()),
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} rows inserted")
-
+    print(f"done. {inserted} rows.")
 
 def seed_users(cursor):
-    """Insert User rows. Names come from Bidders.csv where available."""
-    print("  Loading User...")
-    # Build name lookup from Bidders
+    print("loading users...")
     names = {}
     for row in read_csv("Bidders.csv"):
         email = row["email"].strip()
@@ -116,11 +74,10 @@ def seed_users(cursor):
             (email, hashed, name),
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} rows inserted")
-
+    print(f"done. {inserted} rows.")
 
 def seed_addresses(cursor):
-    print("  Loading Address...")
+    print("loading addresses...")
     rows = read_csv("Address.csv")
     inserted = 0
     for row in rows:
@@ -135,11 +92,10 @@ def seed_addresses(cursor):
             ),
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} rows inserted")
-
+    print(f"done. {inserted} rows.")
 
 def seed_bidders(cursor):
-    print("  Loading Bidder...")
+    print("loading bidders...")
     rows = read_csv("Bidders.csv")
     inserted = 0
     for row in rows:
@@ -148,11 +104,10 @@ def seed_bidders(cursor):
                     (row.get("first_name", "") + " " + row.get("last_name", "")).strip())
 
         addr_id = row.get("home_address_id", "").strip() or None
-        # Verify address_id actually exists (data quality guard)
         if addr_id:
             cursor.execute("SELECT 1 FROM Address WHERE address_id = %s", (addr_id,))
             if not cursor.fetchone():
-                addr_id = None  # orphan reference — drop the FK
+                addr_id = None
 
         cursor.execute(
             "INSERT IGNORE INTO Bidder "
@@ -168,11 +123,10 @@ def seed_bidders(cursor):
             ),
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} rows inserted")
-
+    print(f"done. {inserted} rows.")
 
 def seed_sellers(cursor):
-    print("  Loading Seller...")
+    print("loading sellers...")
     rows = read_csv("Sellers.csv")
     inserted = 0
     for row in rows:
@@ -190,17 +144,15 @@ def seed_sellers(cursor):
             ),
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} rows inserted")
-
+    print(f"done. {inserted} rows.")
 
 def seed_local_vendors(cursor):
-    print("  Loading LocalVendor...")
+    print("loading local vendors...")
     rows = read_csv("Local_Vendors.csv")
     inserted = 0
     for row in rows:
         email = row["Email"].strip()
         ensure_user(cursor, email, row.get("Business_Name", ""))
-        # Ensure a Seller row exists for this vendor
         cursor.execute("INSERT IGNORE INTO Seller (email) VALUES (%s)", (email,))
 
         addr_id = row.get("Business_Address_ID", "").strip() or None
@@ -221,12 +173,10 @@ def seed_local_vendors(cursor):
             ),
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} rows inserted")
-
+    print(f"done. {inserted} rows.")
 
 def seed_helpdesk(cursor):
-    print("  Loading HelpDesk...")
-    # Ensure the pseudo-staff account exists (used for unassigned requests)
+    print("loading helpdesk...")
     ensure_user(cursor, "helpdeskteam@lsu.edu", "HelpDesk Team")
 
     rows = read_csv("Helpdesk.csv")
@@ -239,19 +189,17 @@ def seed_helpdesk(cursor):
             (email, row.get("Position", "Support").strip()),
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} rows inserted")
-
+    print(f"done. {inserted} rows.")
 
 def seed_credit_cards(cursor):
-    print("  Loading CreditCard...")
+    print("loading cards...")
     rows = read_csv("Credit_Cards.csv")
     inserted = 0
     for row in rows:
         owner = row["Owner_email"].strip()
-        # CreditCard FK requires a Bidder row
         cursor.execute("SELECT 1 FROM Bidder WHERE email = %s", (owner,))
         if not cursor.fetchone():
-            continue  # skip orphan cards
+            continue
 
         cursor.execute(
             "INSERT IGNORE INTO CreditCard "
@@ -268,19 +216,13 @@ def seed_credit_cards(cursor):
             ),
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} rows inserted")
+    print(f"done. {inserted} rows.")
 
-
+# 2 pass approach to handle parents
 def seed_categories(cursor):
-    """Two-pass approach:
-    Pass 1 — insert every unique category name with NULL parent.
-    Pass 2 — update parent_category for each row that has one.
-    This avoids FK chicken-and-egg ordering issues.
-    """
-    print("  Loading Category (pass 1 — names)...")
+    print("loading categories (pass 1)...")
     rows = read_csv("Categories.csv")
 
-    # Collect every name that appears as either category_name or parent_category
     all_names = set()
     for row in rows:
         if row.get("category_name", "").strip():
@@ -294,9 +236,8 @@ def seed_categories(cursor):
             "INSERT IGNORE INTO Category (category_name) VALUES (%s)", (name,)
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} category names inserted")
 
-    print("  Loading Category (pass 2 — parent links)...")
+    print("loading categories (pass 2)...")
     updated = 0
     for row in rows:
         cname = row.get("category_name", "").strip()
@@ -307,13 +248,10 @@ def seed_categories(cursor):
                 (pname, cname),
             )
             updated += cursor.rowcount
-    print(f"    {updated} parent relationships set")
-
+    print(f"done.")
 
 def seed_products(cursor):
-    """Returns a dict mapping (seller_email, listing_id) → product_id
-    for use by Bid and Transaction seeding."""
-    print("  Loading Product...")
+    print("loading products...")
     rows = read_csv("Auction_Listings.csv")
     inserted = 0
     for row in rows:
@@ -330,7 +268,7 @@ def seed_products(cursor):
         price = row.get("Reserve_Price", "0").replace("$", "").replace(",", "").strip() or "0"
         max_bids = int(row["Max_bids"]) if row.get("Max_bids") else 1
         status_val = row.get("Status", "1").strip()
-        # Status in CSV: 1 = active, 0 = inactive, 2 = sold
+        
         if status_val == "1":
             listing_status = "active"
         elif status_val == "2":
@@ -338,12 +276,10 @@ def seed_products(cursor):
         else:
             listing_status = "inactive"
 
-        # Verify category exists
         cursor.execute(
             "SELECT 1 FROM Category WHERE category_name = %s", (category,)
         )
         if not cursor.fetchone():
-            # Insert unknown category without a parent (data quality fallback)
             cursor.execute(
                 "INSERT IGNORE INTO Category (category_name) VALUES (%s)", (category,)
             )
@@ -360,21 +296,18 @@ def seed_products(cursor):
         )
         inserted += cursor.rowcount
 
-    print(f"    {inserted} rows inserted")
-
-    # Build lookup: (seller_email, listing_id) → product_id
+    # need this lookup for bids and stuff
     cursor.execute("SELECT product_id, seller_email, listing_id FROM Product")
     lookup = {}
     for pid, semail, lid in cursor.fetchall():
         lookup[(semail, int(lid))] = pid
+    print(f"done. {inserted} rows.")
     return lookup
 
-
 def seed_bids(cursor, product_lookup):
-    print("  Loading Bid...")
+    print("loading bids...")
     rows = read_csv("Bids.csv")
     inserted = 0
-    skipped = 0
     for row in rows:
         seller = row["Seller_Email"].strip()
         listing_id = int(row["Listing_ID"])
@@ -382,7 +315,6 @@ def seed_bids(cursor, product_lookup):
 
         product_id = product_lookup.get((seller, listing_id))
         if product_id is None:
-            skipped += 1
             continue
 
         ensure_user(cursor, bidder)
@@ -396,15 +328,12 @@ def seed_bids(cursor, product_lookup):
             (int(row["Bid_ID"]), product_id, listing_id, seller, bidder, float(price)),
         )
         inserted += cursor.rowcount
-
-    print(f"    {inserted} rows inserted, {skipped} skipped (no matching product)")
-
+    print(f"done. {inserted} rows.")
 
 def seed_transactions(cursor, product_lookup):
-    print("  Loading Transaction...")
+    print("loading transactions...")
     rows = read_csv("Transactions.csv")
     inserted = 0
-    skipped = 0
     for row in rows:
         seller = row["Seller_Email"].strip()
         listing_id = int(row["Listing_ID"])
@@ -412,7 +341,6 @@ def seed_transactions(cursor, product_lookup):
 
         product_id = product_lookup.get((seller, listing_id))
         if product_id is None:
-            skipped += 1
             continue
 
         ensure_user(cursor, buyer)
@@ -438,31 +366,23 @@ def seed_transactions(cursor, product_lookup):
             ),
         )
         inserted += cursor.rowcount
-
-    print(f"    {inserted} rows inserted, {skipped} skipped (no matching product)")
-
+    print(f"done. {inserted} rows.")
 
 def seed_ratings(cursor):
-    """[FIX-4] Rating PK is (bidder_email, seller_email, rating_date).
-    API enforces per-product transaction check; historical CSV data seeded here."""
-    print("  Loading Rating...")
+    print("loading ratings...")
     rows = read_csv("Ratings.csv")
     inserted = 0
-    skipped = 0
     for row in rows:
         bidder = row["Bidder_Email"].strip()
         seller = row["Seller_Email"].strip()
         rating_date = parse_date(row.get("Date"))
         if not rating_date:
-            skipped += 1
             continue
 
         score = row.get("Rating", "").strip()
         if not score:
-            skipped += 1
             continue
 
-        # Ensure Bidder and Seller rows exist
         ensure_user(cursor, bidder)
         cursor.execute("INSERT IGNORE INTO Bidder (email) VALUES (%s)", (bidder,))
         ensure_user(cursor, seller)
@@ -481,12 +401,10 @@ def seed_ratings(cursor):
             ),
         )
         inserted += cursor.rowcount
-
-    print(f"    {inserted} rows inserted, {skipped} skipped (missing date or score)")
-
+    print(f"done. {inserted} rows.")
 
 def seed_requests(cursor):
-    print("  Loading Request...")
+    print("loading requests...")
     rows = read_csv("Requests.csv")
     inserted = 0
     for row in rows:
@@ -513,21 +431,14 @@ def seed_requests(cursor):
             ),
         )
         inserted += cursor.rowcount
-    print(f"    {inserted} rows inserted")
+    print(f"done. {inserted} rows.")
 
-
-# ---------------------------------------------------------------------------
-# Post-processing
-# ---------------------------------------------------------------------------
-
-def update_is_leaf(cursor):
-    """A category is a leaf if no other category names it as parent_category."""
-    print("  Computing is_leaf flags...")
-    # Reset all to FALSE first
+# stuff we have to do after loading
+def post_process(cursor):
+    print("running post-processing...")
+    
+    # categories is_leaf
     cursor.execute("UPDATE Category SET is_leaf = FALSE")
-    # Mark leaves: categories that appear in no row's parent_category column.
-    # Wrapped in a derived table to satisfy MySQL's restriction on updating
-    # a table that is also referenced in the subquery's FROM clause (error 1093).
     cursor.execute("""
         UPDATE Category
         SET is_leaf = TRUE
@@ -539,14 +450,8 @@ def update_is_leaf(cursor):
             ) AS parents
         )
     """)
-    cursor.execute("SELECT COUNT(*) FROM Category WHERE is_leaf = TRUE")
-    n = cursor.fetchone()[0]
-    print(f"    {n} leaf categories marked")
 
-
-def update_avg_ratings(cursor):
-    """Compute and cache avg_rating on each Seller row."""
-    print("  Computing Seller avg_rating...")
+    # seller ratings
     cursor.execute("""
         UPDATE Seller s
         SET avg_rating = (
@@ -555,14 +460,8 @@ def update_avg_ratings(cursor):
             WHERE r.seller_email = s.email
         )
     """)
-    cursor.execute("SELECT COUNT(*) FROM Seller WHERE avg_rating IS NOT NULL")
-    n = cursor.fetchone()[0]
-    print(f"    avg_rating set for {n} sellers")
 
-
-def mark_sold_products(cursor):
-    """Products with a completed Transaction should be 'sold'."""
-    print("  Marking sold products...")
+    # mark products as sold
     cursor.execute("""
         UPDATE Product p
         JOIN Transaction t ON t.product_id = p.product_id
@@ -570,12 +469,7 @@ def mark_sold_products(cursor):
         WHERE t.payment_status = 'completed'
           AND p.listing_status != 'sold'
     """)
-    print(f"    {cursor.rowcount} products marked sold")
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+    print("post-processing done.")
 
 def main():
     conn = pymysql.connect(
@@ -589,7 +483,7 @@ def main():
     cursor = conn.cursor()
 
     try:
-        print("\n=== Seeding NittanyAuction Database ===\n")
+        print("SEEDING START...")
 
         seed_zipcodes(cursor)
         seed_users(cursor)
@@ -606,22 +500,18 @@ def main():
         seed_ratings(cursor)
         seed_requests(cursor)
 
-        print("\n=== Post-processing ===\n")
-        update_is_leaf(cursor)
-        update_avg_ratings(cursor)
-        mark_sold_products(cursor)
+        post_process(cursor)
 
         conn.commit()
-        print("\n=== Done! Database fully populated. ===\n")
+        print("DONE!")
 
     except Exception as e:
         conn.rollback()
-        print(f"\nERROR: {e}")
+        print(f"FAILED: {e}")
         raise
     finally:
         cursor.close()
         conn.close()
-
 
 if __name__ == "__main__":
     main()

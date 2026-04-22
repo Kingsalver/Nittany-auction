@@ -20,10 +20,10 @@ def get_db_connection():
 
 def get_db():
     """
-    FastAPI dependency that yields a pymysql connection.
-    Automatically closes the connection when the request is done.
+    FastAPI dependency that gives a pymysql connection
+    automatically closes the connection when the request is done so we dont have to worry about that
 
-    Usage in a route:
+    usage in a route that i got from docs/previous project:
         @router.get("/example")
         def example(db=Depends(get_db)):
             with db.cursor() as cursor:

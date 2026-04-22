@@ -1,37 +1,8 @@
--- ============================================================
--- Nittany Auction — Corrected MySQL Schema
--- CMPSC 431W Spring 2026
--- ============================================================
--- Changes from previous version:
---   [FIX-1] Address table added (was missing; required by spec)
---   [FIX-2] Bidder: home_address_id FK replaces flat street/zip;
---            first_name/last_name added per spec
---   [FIX-3] Product: max_bids INT added; auction_end_time removed
---            (spec is count-based, not time-based); listing_id column
---            added for per-seller natural key; UNIQUE(seller_email,
---            listing_id) enforces spec composite PK; removal audit
---            fields added for Phase 2 §3; category_name replaces
---            category_id to match spec FK shape
---   [FIX-4] Rating: PK changed to (bidder_email, seller_email,
---            rating_date) per spec; transaction_id FK dropped
---            (spec states ratings cover more than transactions)
---   [FIX-5] HelpDesk: column renamed staff_role → position (spec)
---   [FIX-6] CreditCard: column names aligned to spec
---            (credit_card_num, expire_month INT, expire_year INT,
---            security_code, owner_email)
---   [FIX-7] Category: UNIQUE(category_name) added; parent stored
---            as name string FK (matches spec structure); is_leaf
---            kept as computed extension, populated in setup_db.py
---   [EXT]   Seller.avg_rating cached column (Phase 2 §8)
---   [EXT]   Sessions, Watchlist, Notification, ListingQuestion
---            kept as app-layer extensions
--- ============================================================
-
 DROP DATABASE IF EXISTS nittany_auction;
 CREATE DATABASE nittany_auction;
 USE nittany_auction;
 
--- Drop in reverse-dependency order for clean re-runs
+-- clear old tables if they exist
 DROP TABLE IF EXISTS Sessions;
 DROP TABLE IF EXISTS ListingQuestion;
 DROP TABLE IF EXISTS Notification;
@@ -51,12 +22,7 @@ DROP TABLE IF EXISTS Address;
 DROP TABLE IF EXISTS ZipCode;
 DROP TABLE IF EXISTS User;
 
-
--- ============================================================
--- 1. User
---    Spec: Users(email, password)
---    name is our extension for display purposes
--- ============================================================
+-- users table
 CREATE TABLE User (
     email    VARCHAR(255) NOT NULL,
     password VARCHAR(255) NOT NULL,
@@ -64,11 +30,7 @@ CREATE TABLE User (
     PRIMARY KEY (email)
 );
 
-
--- ============================================================
--- 2. ZipCode
---    Spec: Zipcode_Info(zipcode, city, state)
--- ============================================================
+-- zip codes from the dataset
 CREATE TABLE ZipCode (
     zipcode VARCHAR(10)  NOT NULL,
     city    VARCHAR(100) NOT NULL,
@@ -76,12 +38,7 @@ CREATE TABLE ZipCode (
     PRIMARY KEY (zipcode)
 );
 
-
--- ============================================================
--- 3. Address  [FIX-1: table was missing]
---    Spec: Address(address_ID, zipcode, street_num, street_name)
---    address_id values are UUIDs (hex strings) from the CSV dataset
--- ============================================================
+-- address table
 CREATE TABLE Address (
     address_id  VARCHAR(64)  NOT NULL,
     zipcode     VARCHAR(10),
@@ -91,13 +48,7 @@ CREATE TABLE Address (
     FOREIGN KEY (zipcode) REFERENCES ZipCode(zipcode)
 );
 
-
--- ============================================================
--- 4. Bidder  [FIX-2: first_name/last_name, home_address_id]
---    Spec: Bidders(email, first_name, last_name, age,
---                  home_address_id, major)
---    phone, annual_income are extensions
--- ============================================================
+-- bidders table
 CREATE TABLE Bidder (
     email           VARCHAR(255) NOT NULL,
     first_name      VARCHAR(100),
@@ -112,14 +63,7 @@ CREATE TABLE Bidder (
     FOREIGN KEY (home_address_id) REFERENCES Address(address_id)
 );
 
-
--- ============================================================
--- 5. Seller
---    Spec: Sellers(email, bank_routing_number,
---                  bank_account_number, balance)
---    avg_rating is an extension: cached and updated on each
---    new rating submission (Phase 2 §8)
--- ============================================================
+-- sellers table
 CREATE TABLE Seller (
     email                VARCHAR(255)  NOT NULL,
     bank_routing_number  VARCHAR(50),
@@ -130,14 +74,7 @@ CREATE TABLE Seller (
     FOREIGN KEY (email) REFERENCES User(email)
 );
 
-
--- ============================================================
--- 6. LocalVendor
---    Spec: Local_Vendors(Email, Business_Name,
---          Business_Address_ID, Customer_Service_Phone_Number)
---    Cascade-delete: removing a vendor removes their Seller row
---    which cascades to Product → Bid/Watchlist/etc.
--- ============================================================
+-- vendors
 CREATE TABLE LocalVendor (
     email                  VARCHAR(255) NOT NULL,
     business_name          VARCHAR(255) NOT NULL,
@@ -148,11 +85,7 @@ CREATE TABLE LocalVendor (
     FOREIGN KEY (business_address_id) REFERENCES Address(address_id)
 );
 
-
--- ============================================================
--- 7. HelpDesk  [FIX-5: column renamed to position]
---    Spec: Helpdesk(email, position)
--- ============================================================
+-- help desk staff
 CREATE TABLE HelpDesk (
     email    VARCHAR(255) NOT NULL,
     position VARCHAR(100) NOT NULL,
@@ -160,12 +93,7 @@ CREATE TABLE HelpDesk (
     FOREIGN KEY (email) REFERENCES User(email)
 );
 
-
--- ============================================================
--- 8. CreditCard  [FIX-6: column names aligned to spec]
---    Spec: Credit_Cards(credit_card_num, card_type,
---          expire_month, expire_year, security_code, Owner_email)
--- ============================================================
+-- cards
 CREATE TABLE CreditCard (
     credit_card_num VARCHAR(20)  NOT NULL,
     card_type       VARCHAR(50),
@@ -177,16 +105,7 @@ CREATE TABLE CreditCard (
     FOREIGN KEY (owner_email) REFERENCES Bidder(email) ON DELETE CASCADE
 );
 
-
--- ============================================================
--- 9. Category  [FIX-7: UNIQUE(category_name), parent as name FK]
---    Spec: Categories(parent_category, category_name)
---    PK = category_name in spec; we use surrogate category_id
---    for efficient FK references but enforce the natural key
---    with UNIQUE(category_name).
---    parent_category stores the parent's name (self-referential).
---    is_leaf is an extension, computed in setup_db.py after load.
--- ============================================================
+-- category table
 CREATE TABLE Category (
     category_id     INT          NOT NULL AUTO_INCREMENT,
     category_name   VARCHAR(255) NOT NULL,
@@ -198,18 +117,7 @@ CREATE TABLE Category (
     FOREIGN KEY (parent_category) REFERENCES Category(category_name)
 );
 
-
--- ============================================================
--- 10. Product  [FIX-3: max_bids, listing_id, category_name FK,
---               removal audit; auction_end_time removed]
---    Spec: Auction_Listings(Seller_Email, Listing_ID, Category,
---          Auction_Title, Product_Name, Product_Description,
---          Quantity, Reserve_Price, Max_bids, Status)
---    Composite natural key UNIQUE(seller_email, listing_id)
---    matches spec's (Seller_Email, Listing_ID) composite PK.
---    product_id is our surrogate PK for FK references.
---    listing_status: 'active'=1, 'inactive'=0, 'sold'=2
--- ============================================================
+-- products / auction listings
 CREATE TABLE Product (
     product_id          INT           NOT NULL AUTO_INCREMENT,
     seller_email        VARCHAR(255)  NOT NULL,
@@ -223,7 +131,6 @@ CREATE TABLE Product (
     max_bids            INT           NOT NULL,
     listing_status      VARCHAR(20)   NOT NULL DEFAULT 'active',
     created_at          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    -- Removal audit fields (Phase 2 §3)
     removal_reason      TEXT,
     bids_at_removal     INT,
     removal_timestamp   DATETIME,
@@ -235,14 +142,7 @@ CREATE TABLE Product (
     CHECK (listing_status IN ('active', 'inactive', 'sold'))
 );
 
-
--- ============================================================
--- 11. Bid
---    Spec: Bids(Bid_ID, Seller_Email, Listing_ID,
---               Bidder_email, Bid_price)
---    product_id is our surrogate reference to Product.
---    seller_email is denormalized here per spec.
--- ============================================================
+-- bids
 CREATE TABLE Bid (
     bid_id        INT           NOT NULL AUTO_INCREMENT,
     product_id    INT           NOT NULL,
@@ -257,14 +157,7 @@ CREATE TABLE Bid (
     FOREIGN KEY (bidder_email) REFERENCES Bidder(email)
 );
 
-
--- ============================================================
--- 12. Transaction
---    Spec: Transactions(Transaction_ID, Seller_Email,
---          Listing_ID, Buyer_Email, Date, Payment)
---    product_id is our surrogate reference.
---    UNIQUE(product_id): a listing is sold at most once.
--- ============================================================
+-- transactions
 CREATE TABLE Transaction (
     transaction_id INT           NOT NULL AUTO_INCREMENT,
     product_id     INT           NOT NULL,
@@ -281,15 +174,7 @@ CREATE TABLE Transaction (
     FOREIGN KEY (buyer_email)  REFERENCES Bidder(email)
 );
 
-
--- ============================================================
--- 13. Rating  [FIX-4: composite PK per spec; no transaction FK]
---    Spec: Rating(Bidder_Email, Seller_Email, Date,
---                 Rating, Rating_Desc)
---    PK = (bidder_email, seller_email, rating_date)
---    API enforces: buyer must have a completed Transaction for
---    the specific product_id before a rating is accepted.
--- ============================================================
+-- ratings
 CREATE TABLE Rating (
     bidder_email VARCHAR(255) NOT NULL,
     seller_email VARCHAR(255) NOT NULL,
@@ -302,15 +187,7 @@ CREATE TABLE Rating (
     CHECK (rating >= 1 AND rating <= 5)
 );
 
-
--- ============================================================
--- 14. Request
---    Spec: Requests(request_id, sender_email,
---          helpdesk_staff_email, request_type, request_desc,
---          request_status)
---    request_status: 0 = incomplete, 1 = complete
---    Default helpdesk_staff_email = helpdeskteam@lsu.edu
--- ============================================================
+-- request table
 CREATE TABLE Request (
     request_id           INT          NOT NULL AUTO_INCREMENT,
     sender_email         VARCHAR(255) NOT NULL,
@@ -323,10 +200,7 @@ CREATE TABLE Request (
     FOREIGN KEY (sender_email) REFERENCES User(email)
 );
 
-
--- ============================================================
--- 15. Watchlist  [extension — Phase 2 optional §11]
--- ============================================================
+-- watchlist extension
 CREATE TABLE Watchlist (
     bidder_email    VARCHAR(255) NOT NULL,
     product_id      INT          NOT NULL,
@@ -336,10 +210,7 @@ CREATE TABLE Watchlist (
     FOREIGN KEY (product_id)   REFERENCES Product(product_id)  ON DELETE CASCADE
 );
 
-
--- ============================================================
--- 16. Notification  [extension]
--- ============================================================
+-- notifications extension
 CREATE TABLE Notification (
     notification_id   INT          NOT NULL AUTO_INCREMENT,
     bidder_email      VARCHAR(255) NOT NULL,
@@ -353,10 +224,7 @@ CREATE TABLE Notification (
     FOREIGN KEY (product_id)   REFERENCES Product(product_id)  ON DELETE CASCADE
 );
 
-
--- ============================================================
--- 17. ListingQuestion  [extension]
--- ============================================================
+-- questions extension
 CREATE TABLE ListingQuestion (
     question_id    INT          NOT NULL AUTO_INCREMENT,
     product_id     INT          NOT NULL,
@@ -369,10 +237,7 @@ CREATE TABLE ListingQuestion (
     FOREIGN KEY (bidder_email) REFERENCES Bidder(email)
 );
 
-
--- ============================================================
--- 18. Sessions  [extension — JWT session tracking]
--- ============================================================
+-- jwt sessions extension
 CREATE TABLE Sessions (
     session_id INT          NOT NULL AUTO_INCREMENT,
     user_email VARCHAR(255) NOT NULL,
